@@ -1,0 +1,18 @@
+{
+  "dependencies": {
+    "uuid": "^11.1.0",
+    "ws": "^8.18.3"
+  },
+  "name": "bhchat-main",
+  "version": "1.0.0",
+  "main": "server.js",
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": ""
+}
