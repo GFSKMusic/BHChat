@@ -53,6 +53,25 @@
             cursor: pointer;
         }
         #main-app { display: none; }
+
+        /* New styles for the password visibility toggle */
+        .password-container {
+            position: relative;
+            width: 100%;
+            display: flex;
+            align-items: center;
+        }
+        #toggle-password {
+            position: absolute;
+            right: 10px;
+            cursor: pointer;
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+            color: #555;
+            font-size: 12px;
+        }
     </style>
 </head>
 <body>
@@ -60,7 +79,10 @@
 <div id="auth-section">
     <h2>Welcome to BHChat</h2>
     <input type="text" id="auth-username" placeholder="Enter username">
-    <input type="password" id="auth-password" placeholder="Enter password">
+    <div class="password-container">
+        <input type="password" id="auth-password" placeholder="Enter password">
+        <span id="toggle-password">Show</span>
+    </div>
     <button id="login-button">Login</button>
     <button id="register-button">Register</button>
     <p id="auth-status"></p>
@@ -114,6 +136,7 @@
     const loginButton = document.getElementById('login-button');
     const registerButton = document.getElementById('register-button');
     const authStatus = document.getElementById('auth-status');
+    const togglePassword = document.getElementById('toggle-password'); // New element
 
     const videoGrid = document.getElementById('video-grid');
     const chatbox = document.getElementById('chatbox');
@@ -149,6 +172,16 @@
     const configuration = {
         iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
     };
+
+    // New Event Listener for the password toggle
+    togglePassword.addEventListener('click', function() {
+        // Toggle the type attribute
+        const type = authPasswordInput.getAttribute('type') === 'password' ? 'text' : 'password';
+        authPasswordInput.setAttribute('type', type);
+        
+        // Toggle the text content of the span
+        this.textContent = type === 'password' ? 'Show' : 'Hide';
+    });
 
     loginButton.onclick = () => {
         const username = authUsernameInput.value.trim();
