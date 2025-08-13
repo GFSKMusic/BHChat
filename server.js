@@ -1,11 +1,37 @@
 const WebSocket = require('ws');
 const { v4: uuidv4 } = require('uuid');
 const os = require('os');
+const Database = require('better-sqlite3');
 
 const PORT = 8080;
 const wss = new WebSocket.Server({ port: PORT });
 const rooms = {};
-const roomMessages = {};
+
+// Initialize the database
+const db = new Database('chat.db', { verbose: console.log });
+
+// Create tables if they don't exist
+db.prepare(`
+    CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE,
+        password TEXT
+    )
+`).run();
+
+db.prepare(`
+    CREATE TABLE IF NOT EXISTS messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        room TEXT,
+        sender_id TEXT,
+        sender_username TEXT,
+        type TEXT,
+        content TEXT,
+        timestamp TEXT
+    )
+`).run();
+
+console.log('Database initialized successfully.');
 
 function getLocalIpAddress() {
     const interfaces = os.networkInterfaces();
@@ -32,18 +58,35 @@ wss.on('connection', ws => {
     ws.id = uuidv4();
     console.log(`Client connected with ID: ${ws.id}`);
 
-    ws.on('message', message => {
+    ws.on('message', async message => {
         const data = JSON.parse(message);
         data.sender = ws.id;
 
         switch (data.type) {
+            case 'register':
+                try {
+                    db.prepare('INSERT INTO users (username, password) VALUES (?, ?)').run(data.username, data.password);
+                    ws.send(JSON.stringify({ type: 'registration_success' }));
+                } catch (err) {
+                    ws.send(JSON.stringify({ type: 'error', message: 'Username already exists.' }));
+                }
+                break;
+
+            case 'login':
+                const user = db.prepare('SELECT * FROM users WHERE username = ? AND password = ?').get(data.username, data.password);
+                if (user) {
+                    ws.send(JSON.stringify({ type: 'login_success', username: user.username }));
+                } else {
+                    ws.send(JSON.stringify({ type: 'error', message: 'Invalid username or password.' }));
+                }
+                break;
+
             case 'join_room':
                 if (!data.username || data.username.trim() === '') {
                     ws.send(JSON.stringify({ type: 'error', message: 'Username is required.' }));
                     return;
                 }
                 
-                // If the user is already in a room, remove them first
                 if (ws.room && rooms[ws.room]) {
                     const oldRoomPeers = rooms[ws.room];
                     const updatedPeers = oldRoomPeers.filter(client => client.id !== ws.id);
@@ -51,7 +94,6 @@ wss.on('connection', ws => {
                     
                     if (updatedPeers.length === 0) {
                         delete rooms[ws.room];
-                        delete roomMessages[ws.room];
                     } else {
                         updatedPeers.forEach(client => {
                             if (client.readyState === WebSocket.OPEN) {
@@ -67,9 +109,6 @@ wss.on('connection', ws => {
                 if (!rooms[data.room]) {
                     rooms[data.room] = [];
                 }
-                if (!roomMessages[data.room]) {
-                    roomMessages[data.room] = [];
-                }
                 
                 ws.username = data.username;
                 rooms[data.room].push(ws);
@@ -77,13 +116,13 @@ wss.on('connection', ws => {
                 
                 console.log(`Peer ${ws.id} (${ws.username}) joined room '${data.room}'. Total peers: ${rooms[data.room].length}`);
                 
-                // Send chat history to the new user
+                // Retrieve chat history from the database
+                const history = db.prepare('SELECT sender_username as sender, type, content, timestamp FROM messages WHERE room = ? ORDER BY timestamp ASC').all(data.room);
                 ws.send(JSON.stringify({
                     type: 'chat_history',
-                    history: roomMessages[data.room]
+                    history: history
                 }));
 
-                // Notify all existing peers in the room that a new peer has joined
                 rooms[data.room].forEach(client => {
                     if (client !== ws && client.readyState === WebSocket.OPEN) {
                         client.send(JSON.stringify({
@@ -94,7 +133,6 @@ wss.on('connection', ws => {
                     }
                 });
 
-                // Send the new peer a list of all existing peers in the room
                 rooms[data.room].forEach(client => {
                     if (client !== ws && client.readyState === WebSocket.OPEN) {
                         ws.send(JSON.stringify({
@@ -120,9 +158,9 @@ wss.on('connection', ws => {
                     text: data.message,
                     timestamp: new Date().toISOString()
                 };
-                roomMessages[data.room].push(chatMessage);
                 
-                // Broadcast to all clients in the room (including sender to show it instantly)
+                db.prepare('INSERT INTO messages (room, sender_id, sender_username, type, content, timestamp) VALUES (?, ?, ?, ?, ?, ?)').run(data.room, ws.id, ws.username, chatMessage.type, chatMessage.text, chatMessage.timestamp);
+                
                 rooms[data.room].forEach(client => {
                     if (client.readyState === WebSocket.OPEN) {
                         client.send(JSON.stringify({
@@ -141,9 +179,9 @@ wss.on('connection', ws => {
                     image: data.image,
                     timestamp: new Date().toISOString()
                 };
-                roomMessages[data.room].push(imageMessage);
                 
-                // Broadcast to all clients in the room (including sender)
+                db.prepare('INSERT INTO messages (room, sender_id, sender_username, type, content, timestamp) VALUES (?, ?, ?, ?, ?, ?)').run(data.room, ws.id, ws.username, imageMessage.type, imageMessage.image, imageMessage.timestamp);
+                
                 rooms[data.room].forEach(client => {
                     if (client.readyState === WebSocket.OPEN) {
                         client.send(JSON.stringify({
@@ -161,7 +199,6 @@ wss.on('connection', ws => {
                 };
                 const targetClient = rooms[ws.room].find(client => client.id === data.target);
                 
-                // Send to the target peer and back to the sender
                 if (targetClient && targetClient.readyState === WebSocket.OPEN) {
                     targetClient.send(JSON.stringify({ type: 'dm_message', message: dmMessage }));
                     ws.send(JSON.stringify({ type: 'dm_message', message: dmMessage }));
@@ -227,7 +264,6 @@ wss.on('connection', ws => {
                 rooms[ws.room] = updatedPeers;
             } else {
                 delete rooms[ws.room];
-                delete roomMessages[ws.room];
             }
         }
     });
