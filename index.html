@@ -187,64 +187,90 @@
     };
 
     let userId;
+
+    function setupEventListeners() {
+        togglePassword.addEventListener('click', function() {
+            const type = authPasswordInput.getAttribute('type') === 'password' ? 'text' : 'password';
+            authPasswordInput.setAttribute('type', type);
+            this.textContent = type === 'password' ? 'Show' : 'Hide';
+        });
     
-    togglePassword.addEventListener('click', function() {
-        const type = authPasswordInput.getAttribute('type') === 'password' ? 'text' : 'password';
-        authPasswordInput.setAttribute('type', type);
-        this.textContent = type === 'password' ? 'Show' : 'Hide';
-    });
-
-loginButton.onclick = async () => {
-    const username = authUsernameInput.value.trim();
-    const password = authPasswordInput.value.trim();
-    if (username && password) {
-        authStatus.textContent = 'Logging in...';
-        try {
-            const { data, error } = await supabase.functions.invoke('login_with_username', {
-                body: { username, password },
-                headers: { 'Content-Type': 'application/json' }
-            });
-            if (error) throw error;
-            // Handle successful login with the returned token
-            // ...
-        } catch (error) {
-            console.error("Login error:", error);
-            authStatus.textContent = `Login failed: ${error.message}`;
-        }
-    } else {
-        authStatus.textContent = 'Please enter both username and password.';
-    }
-};
-
-    registerButton.onclick = async () => {
-        const username = authUsernameInput.value.trim();
-        const password = authPasswordInput.value.trim();
-        if (username && password) {
-            authStatus.textContent = 'Registering user...';
-            try {
-                const { data, error } = await supabase.auth.signUp({
-                    email: `${username}@harmony-chat.com`,
-                    password: password,
-                });
-                if (error) throw error;
-                
-                // Store username in a separate `users` table for display
-                await supabase.from('users').insert([{ user_id: data.user.id, username }]);
-                
-                authStatus.textContent = 'Registration successful! Please log in.';
-            } catch (error) {
-                console.error("Registration error:", error);
-                authStatus.textContent = `Registration failed: ${error.message}`;
+        loginButton.onclick = async () => {
+            const username = authUsernameInput.value.trim();
+            const password = authPasswordInput.value.trim();
+            if (username && password) {
+                authStatus.textContent = 'Logging in...';
+                try {
+                    const { data, error } = await supabase.auth.signInWithPassword({
+                        email: `${username}@harmony-chat.com`,
+                        password: password,
+                    });
+                    if (error) throw error;
+                    
+                    const { data: userProfile, error: profileError } = await supabase
+                        .from('users')
+                        .select('username')
+                        .eq('user_id', data.user.id)
+                        .single();
+                    
+                    if (profileError || !userProfile) {
+                        authStatus.textContent = 'User profile not found. Please register.';
+                        await supabase.auth.signOut();
+                    } else {
+                        localUsername = userProfile.username;
+                        userId = data.user.id;
+                        userIdDisplay.textContent = userId;
+                        authSection.style.display = 'none';
+                        mainApp.style.display = 'flex';
+                        statusMessage.textContent = `Hello, ${localUsername}! Enter a room name and click Join.`;
+                    }
+                } catch (error) {
+                    console.error("Login error:", error);
+                    authStatus.textContent = `Login failed: ${error.message}`;
+                }
+            } else {
+                authStatus.textContent = 'Please enter both username and password.';
             }
-        } else {
-            authStatus.textContent = 'Please enter both username and password.';
-        }
-    };
+        };
     
-    // Function to set up all event listeners and WebSocket connection
-    function initApp() {
-        connectToSignalingServer();
-        
+        registerButton.onclick = async () => {
+            const username = authUsernameInput.value.trim();
+            const password = authPasswordInput.value.trim();
+            if (username && password) {
+                authStatus.textContent = 'Registering user...';
+                try {
+                    // Check if username is already taken
+                    const { data: existingUsers, error: checkError } = await supabase
+                        .from('users')
+                        .select('username')
+                        .eq('username', username);
+
+                    if (checkError) throw checkError;
+
+                    if (existingUsers.length > 0) {
+                        authStatus.textContent = 'Registration failed: Username already taken.';
+                        return;
+                    }
+                    
+                    const { data, error } = await supabase.auth.signUp({
+                        email: `${username}@harmony-chat.com`,
+                        password: password,
+                    });
+                    if (error) throw error;
+                    
+                    // Store username in a separate `users` table for display
+                    await supabase.from('users').insert([{ user_id: data.user.id, username }]);
+                    
+                    authStatus.textContent = 'Registration successful! Please log in.';
+                } catch (error) {
+                    console.error("Registration error:", error);
+                    authStatus.textContent = `Registration failed: ${error.message}`;
+                }
+            } else {
+                authStatus.textContent = 'Please enter both username and password.';
+            }
+        };
+    
         callButton.onclick = async () => {
             try {
                 localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
@@ -268,7 +294,7 @@ loginButton.onclick = async () => {
                 setTimeout(() => errorBox.remove(), 5000);
             }
         };
-
+    
         hangupButton.onclick = () => {
             if (localStream) {
                 localStream.getTracks().forEach(track => track.stop());
@@ -282,7 +308,7 @@ loginButton.onclick = async () => {
             callButton.style.display = 'inline-block';
             hangupButton.style.display = 'none';
         };
-
+    
         joinButton.onclick = () => {
             roomName = roomInput.value.trim();
             if (roomName && localUsername) {
@@ -301,7 +327,7 @@ loginButton.onclick = async () => {
                 setTimeout(() => errorBox.remove(), 5000);
             }
         };
-
+    
         refreshRoomsButton.onclick = () => {
             if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({ type: 'get_active_rooms' }));
@@ -309,7 +335,7 @@ loginButton.onclick = async () => {
                 activeRoomsList.innerHTML = '<p>Not connected to the server.</p>';
             }
         };
-
+    
         chatInputForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             const message = chatInput.value.trim();
@@ -327,7 +353,7 @@ loginButton.onclick = async () => {
                     const smallerId = userId < targetUserId ? userId : targetUserId;
                     const largerId = userId > targetUserId ? userId : targetUserId;
                     const dmPath = smallerId + '-' + largerId;
-
+    
                     await supabase.from('dms').insert({
                         dm_path: dmPath,
                         sender_id: userId,
@@ -339,11 +365,11 @@ loginButton.onclick = async () => {
                 chatInput.value = '';
             }
         });
-
+    
         uploadImageButton.onclick = () => {
             imageInput.click();
         };
-
+    
         imageInput.onchange = async (event) => {
             const file = event.target.files[0];
             if (file && file.type.startsWith('image/')) {
@@ -378,7 +404,7 @@ loginButton.onclick = async () => {
             imageInput.value = '';
         };
     }
-
+    
     function connectToSignalingServer() {
         ws = new WebSocket(signalingServerUrl);
         ws.onopen = () => {
@@ -775,7 +801,13 @@ loginButton.onclick = async () => {
                 .subscribe();
         }
     }
+
+    // Call setupEventListeners() once the page loads
+    document.addEventListener('DOMContentLoaded', () => {
+        setupEventListeners();
+        connectToSignalingServer();
+    });
+
 </script>
 </body>
 </html>
-
