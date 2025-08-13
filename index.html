@@ -6,7 +6,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInWithCustomToken, onAuthStateChanged, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, getDoc, setDoc, onSnapshot, collection, query, where, addDoc, serverTimestamp, orderBy, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, setDoc, onSnapshot, collection, query, where, addDoc, serverTimestamp, orderBy, getDocs, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // Global variables provided by the Canvas environment
         const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
@@ -155,16 +155,8 @@
         <button id="join-button" class="p-2 px-4 bg-blue-500 text-white rounded">Join Room</button>
         <button id="refresh-rooms-button" class="p-2 px-4 bg-gray-500 text-white rounded">Refresh Active Rooms</button>
         <p id="status-message" class="mt-2 text-gray-600">Please enter a username and room name, then click Join.</p>
-        <div id="media-controls" style="display:none;" class="mt-4">
-            <button id="call-button" class="p-2 px-4 bg-green-500 text-white rounded">Start Call</button>
-            <button id="hangup-button" style="display:none;" class="p-2 px-4 bg-red-500 text-white rounded">Hang Up</button>
-        </div>
     </div>
     
-    <div id="video-grid" class="flex flex-wrap gap-4 justify-center">
-        <!-- Video elements will be added here -->
-    </div>
-
     <div class="chat-section mt-4">
         <div class="sidebar p-4 bg-white rounded-lg shadow">
             <h3 class="text-xl font-semibold mb-2">Online Users</h3>
@@ -194,7 +186,6 @@
     let app, db, auth, userId, isAuthReady;
     
     // UI elements
-    const videoGrid = document.getElementById('video-grid');
     const chatbox = document.getElementById('chatbox');
     const chatInput = document.getElementById('chat-input');
     const chatInputForm = document.getElementById('chat-input-form');
@@ -202,9 +193,6 @@
     const usernameInput = document.getElementById('username-input');
     const joinButton = document.getElementById('join-button');
     const statusMessage = document.getElementById('status-message');
-    const mediaControls = document.getElementById('media-controls');
-    const callButton = document.getElementById('call-button');
-    const hangupButton = document.getElementById('hangup-button');
     const imageInput = document.getElementById('image-input');
     const uploadImageButton = document.getElementById('upload-image-button');
     const activeRoomsList = document.getElementById('active-rooms-list');
@@ -213,19 +201,10 @@
     const chatTitle = document.getElementById('chat-title');
 
     // App state
-    let localStream = null;
-    let localPeerId;
     let localUsername = localStorage.getItem('username') || '';
     let roomName;
-    const peerConnections = {};
-    const peerUsernames = {};
     const dmHistory = {};
     let currentChatTarget = 'room'; // 'room' or a user's peerId
-
-    // WebRTC signaling via WebSocket
-    const signalingServerUrl = 'wss://bhchat.onrender.com';
-    let ws;
-    const configuration = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
     // Set initial username if it exists in local storage
     if (localUsername) {
@@ -285,50 +264,6 @@
         });
     }
 
-    // Connect to WebRTC signaling server
-    function connectToSignalingServer() {
-        ws = new WebSocket(signalingServerUrl);
-        ws.onopen = () => {
-            console.log('Connected to signaling server.');
-            ws.send(JSON.stringify({ type: 'join_room', room: roomName, username: localUsername, peerId: userId }));
-        };
-        ws.onmessage = async (message) => {
-            const data = JSON.parse(message.data);
-            console.log('Received message:', data.type, 'from:', data.sender);
-
-            if (data.type === 'room_joined') {
-                localPeerId = data.peerId;
-                statusMessage.textContent = `You are in room '${roomName}' as '${localUsername}'. Waiting for others...`;
-                mediaControls.style.display = 'block';
-            } else if (data.type === 'peer_joined') {
-                if (data.peerId !== userId) {
-                    peerUsernames[data.peerId] = data.username;
-                    createPeerConnection(data.peerId);
-                }
-            } else if (data.type === 'offer') {
-                if (data.sender !== userId) {
-                    peerUsernames[data.sender] = data.username;
-                    await handleOffer(data);
-                }
-            } else if (data.type === 'answer') {
-                if (data.sender !== userId) {
-                    peerUsernames[data.sender] = data.username;
-                    await handleAnswer(data);
-                }
-            } else if (data.type === 'candidate') {
-                if (data.sender !== userId) {
-                    await handleCandidate(data);
-                }
-            } else if (data.type === 'peer_left') {
-                removePeerConnection(data.peerId);
-            } else if (data.type === 'active_rooms_list') {
-                displayActiveRooms(data.rooms);
-            }
-        };
-        ws.onclose = () => { console.log('Disconnected from signaling server.'); };
-        ws.onerror = (error) => { console.error('WebSocket error:', error); };
-    }
-
     // --- Event Handlers ---
 
     joinButton.onclick = () => {
@@ -344,12 +279,27 @@
         }
     };
 
-    refreshRoomsButton.onclick = () => {
-        if (ws && ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ type: 'get_active_rooms' }));
-        } else {
-            alert('Not connected to the signaling server.');
+    refreshRoomsButton.onclick = async () => {
+        const roomsRef = collection(db, `artifacts/${appId}/public/data/rooms`);
+        const querySnapshot = await getDocs(roomsRef);
+        const rooms = {};
+        for (const doc of querySnapshot.docs) {
+            const onlineUsersRef = collection(db, `artifacts/${appId}/public/data/rooms/${doc.id}/onlineUsers`);
+            const usersSnapshot = await getDocs(onlineUsersRef);
+            const activeUsers = [];
+            usersSnapshot.forEach(userDoc => {
+                const userData = userDoc.data();
+                const now = Date.now();
+                const lastSeen = userData.lastSeen ? userData.lastSeen.toDate().getTime() : now;
+                if (now - lastSeen < 15000) {
+                    activeUsers.push(userData.username);
+                }
+            });
+            if (activeUsers.length > 0) {
+                rooms[doc.id] = { count: activeUsers.length, users: activeUsers };
+            }
         }
+        displayActiveRooms(rooms);
     };
 
     function joinRoom() {
@@ -357,7 +307,6 @@
             console.error("Firebase auth not ready, waiting...");
             return;
         }
-        connectToSignalingServer();
         initializeRoomListeners();
     }
     
@@ -580,167 +529,6 @@
         activeRoomsList.appendChild(roomListElement);
     }
     
-    // --- WebRTC Functions ---
-    callButton.onclick = async () => {
-        try {
-            localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-            addLocalVideoElement();
-            for (const peerId in peerConnections) {
-                const pc = peerConnections[peerId];
-                if (localStream) {
-                    localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-                }
-                createOffer(pc, peerId);
-            }
-            callButton.classList.add('hidden');
-            hangupButton.classList.remove('hidden');
-        } catch (error) {
-            console.error('Error getting user media:', error);
-            alert('Could not get your camera and microphone. Please check permissions.');
-        }
-    };
-
-    hangupButton.onclick = () => {
-        if (localStream) {
-            localStream.getTracks().forEach(track => track.stop());
-            localStream = null;
-        }
-        for (const peerId in peerConnections) {
-            peerConnections[peerId].close();
-            delete peerConnections[peerId];
-        }
-        videoGrid.innerHTML = '';
-        callButton.classList.remove('hidden');
-        hangupButton.classList.add('hidden');
-    };
-    
-    function addLocalVideoElement() {
-        const videoWrapper = document.createElement('div');
-        videoWrapper.className = 'video-wrapper relative w-full sm:w-1/2 lg:w-1/3 p-2 bg-gray-900 rounded-lg shadow-lg';
-        const video = document.createElement('video');
-        video.id = `video-local-${userId}`;
-        video.autoplay = true;
-        video.playsinline = true;
-        video.muted = true;
-        video.srcObject = localStream;
-        video.classList.add('w-full', 'rounded-lg');
-        const label = document.createElement('div');
-        label.className = 'absolute bottom-2 left-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded';
-        label.textContent = localUsername;
-        videoWrapper.appendChild(video);
-        videoWrapper.appendChild(label);
-        videoGrid.appendChild(videoWrapper);
-    }
-    
-    function createPeerConnection(peerId) {
-        if (peerConnections[peerId]) {
-            console.log(`Connection to peer ${peerId} already exists.`);
-            return;
-        }
-        
-        const pc = new RTCPeerConnection(configuration);
-        peerConnections[peerId] = pc;
-        
-        if (localStream) {
-            localStream.getTracks().forEach(track => {
-                pc.addTrack(track, localStream);
-            });
-        }
-        
-        pc.ontrack = (event) => {
-            const remoteUsername = peerUsernames[peerId] || `Peer ${peerId}`;
-            addRemoteVideoElement(peerId, event.streams[0], remoteUsername);
-        };
-        
-        pc.onicecandidate = (event) => {
-            if (event.candidate) {
-                ws.send(JSON.stringify({
-                    type: 'candidate',
-                    room: roomName,
-                    targetPeer: peerId,
-                    candidate: event.candidate,
-                }));
-            }
-        };
-    }
-    
-    async function createOffer(pc, peerId) {
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        ws.send(JSON.stringify({
-            type: 'offer',
-            room: roomName,
-            targetPeer: peerId,
-            description: pc.localDescription,
-            username: localUsername,
-        }));
-    }
-    
-    async function handleOffer(data) {
-        createPeerConnection(data.sender);
-        const pc = peerConnections[data.sender];
-        if (pc.signalingState !== 'stable') {
-            await pc.setLocalDescription({ type: 'rollback' });
-        }
-        await pc.setRemoteDescription(new RTCSessionDescription(data.description));
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        ws.send(JSON.stringify({
-            type: 'answer',
-            room: roomName,
-            targetPeer: data.sender,
-            description: pc.localDescription,
-            username: localUsername,
-        }));
-    }
-    
-    async function handleAnswer(data) {
-        const pc = peerConnections[data.sender];
-        if (pc && pc.signalingState === 'have-local-offer') {
-            await pc.setRemoteDescription(new RTCSessionDescription(data.description));
-        }
-    }
-    
-    async function handleCandidate(data) {
-        const pc = peerConnections[data.sender];
-        if (pc) {
-            try {
-                await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
-            } catch (e) {
-                console.error('Error adding received ICE candidate', e);
-            }
-        }
-    }
-    
-    function removePeerConnection(peerId) {
-        if (peerConnections[peerId]) {
-            peerConnections[peerId].close();
-            delete peerConnections[peerId];
-        }
-        const videoElement = document.getElementById(`video-${peerId}`);
-        if (videoElement) {
-            videoElement.parentNode.remove();
-        }
-    }
-    
-    function addRemoteVideoElement(peerId, stream, username) {
-        if (document.getElementById(`video-${peerId}`)) return;
-        
-        const videoWrapper = document.createElement('div');
-        videoWrapper.className = 'video-wrapper relative w-full sm:w-1/2 lg:w-1/3 p-2 bg-gray-900 rounded-lg shadow-lg';
-        const video = document.createElement('video');
-        video.id = `video-${peerId}`;
-        video.autoplay = true;
-        video.playsinline = true;
-        video.srcObject = stream;
-        video.classList.add('w-full', 'rounded-lg');
-        const label = document.createElement('div');
-        label.className = 'absolute bottom-2 left-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded';
-        label.textContent = username;
-        videoWrapper.appendChild(video);
-        videoWrapper.appendChild(label);
-        videoGrid.appendChild(videoWrapper);
-    }
 </script>
 </body>
 </html>
