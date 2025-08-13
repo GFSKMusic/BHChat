@@ -6,7 +6,7 @@
         body { font-family: sans-serif; background-color: #f0f2f5; margin: 0; padding: 20px; display: flex; justify-content: center; }
         .container { width: 90%; max-width: 1200px; display: flex; flex-direction: column; gap: 20px; }
         #controls { text-align: center; margin-bottom: 20px; }
-        #room-input, #username-input { padding: 10px; border: 1px solid #ddd; border-radius: 5px; margin-right: 10px; }
+        #room-input { padding: 10px; border: 1px solid #ddd; border-radius: 5px; margin-right: 10px; }
         #join-button, #refresh-rooms-button { padding: 10px 20px; font-size: 16px; background-color: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; }
         #join-button:hover, #refresh-rooms-button:hover { background-color: #0056b3; }
         .control-buttons { margin-top: 10px; }
@@ -27,27 +27,60 @@
         .message { margin: 5px 0; }
         .my-message { text-align: right; color: #007bff; }
         .active-rooms-container { margin-top: 20px; background-color: white; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); padding: 20px; }
+        #auth-section { 
+            display: flex; 
+            flex-direction: column; 
+            gap: 15px; 
+            align-items: center; 
+            padding: 20px; 
+            border: 1px solid #ddd; 
+            border-radius: 8px; 
+            background-color: white; 
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1); 
+            max-width: 400px;
+            margin: 50px auto;
+        }
+        #auth-section input, #auth-section button {
+            width: 100%;
+            padding: 10px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+        }
+        #auth-section button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        #main-app { display: none; }
     </style>
 </head>
 <body>
 
-<div class="container">
+<div id="auth-section">
+    <h2>Welcome to BHChat</h2>
+    <input type="text" id="auth-username" placeholder="Enter username">
+    <input type="password" id="auth-password" placeholder="Enter password">
+    <button id="login-button">Login</button>
+    <button id="register-button">Register</button>
+    <p id="auth-status"></p>
+</div>
+
+<div id="main-app" class="container">
     <h1 style="text-align: center;">BHChat</h1>
 
     <div id="controls">
-        <input type="text" id="username-input" placeholder="Enter your username">
         <input type="text" id="room-input" placeholder="Enter Room Name" value="default-room">
         <button id="join-button">Join Room</button>
         <button id="refresh-rooms-button">Refresh Active Rooms</button>
-        <p id="status-message">Please enter a username and room name, then click Join.</p>
+        <p id="status-message">You are not in a room.</p>
         <div id="media-controls" style="display:none;" class="control-buttons">
             <button id="call-button">Start Call</button>
             <button id="hangup-button" style="display:none;">Hang Up</button>
         </div>
     </div>
     
-    <div id="video-grid" class="video-container">
-    </div>
+    <div id="video-grid" class="video-container"></div>
 
     <div class="chat-section">
         <div class="sidebar">
@@ -74,12 +107,19 @@
 </div>
 
 <script>
+    const authSection = document.getElementById('auth-section');
+    const mainApp = document.getElementById('main-app');
+    const authUsernameInput = document.getElementById('auth-username');
+    const authPasswordInput = document.getElementById('auth-password');
+    const loginButton = document.getElementById('login-button');
+    const registerButton = document.getElementById('register-button');
+    const authStatus = document.getElementById('auth-status');
+
     const videoGrid = document.getElementById('video-grid');
     const chatbox = document.getElementById('chatbox');
     const chatInput = document.getElementById('chat-input');
     const chatInputForm = document.getElementById('chat-input-form');
     const roomInput = document.getElementById('room-input');
-    const usernameInput = document.getElementById('username-input');
     const joinButton = document.getElementById('join-button');
     const statusMessage = document.getElementById('status-message');
     const mediaControls = document.getElementById('media-controls');
@@ -110,14 +150,34 @@
         iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
     };
 
+    loginButton.onclick = () => {
+        const username = authUsernameInput.value.trim();
+        const password = authPasswordInput.value.trim();
+        if (username && password) {
+            authStatus.textContent = 'Logging in...';
+            ws.send(JSON.stringify({ type: 'login', username, password }));
+        } else {
+            authStatus.textContent = 'Please enter both username and password.';
+        }
+    };
+
+    registerButton.onclick = () => {
+        const username = authUsernameInput.value.trim();
+        const password = authPasswordInput.value.trim();
+        if (username && password) {
+            authStatus.textContent = 'Registering user...';
+            ws.send(JSON.stringify({ type: 'register', username, password }));
+        } else {
+            authStatus.textContent = 'Please enter both username and password.';
+        }
+    };
+
     callButton.onclick = async () => {
         try {
             localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
             addLocalVideoElement();
             for (const peerId in peerConnections) {
                 const pc = peerConnections[peerId];
-                // Local stream is already attached to all new peer connections in createPeerConnection.
-                // We just need to trigger an offer to tell them we have a stream.
                 createOffer(pc, peerId);
             }
             callButton.style.display = 'none';
@@ -144,14 +204,12 @@
 
     joinButton.onclick = () => {
         roomName = roomInput.value.trim();
-        localUsername = usernameInput.value.trim();
         if (roomName && localUsername) {
             statusMessage.textContent = `Joining room '${roomName}' as '${localUsername}'...`;
-            connectToSignalingServer();
-            // Trigger an immediate update
-            updateOnlineUsersList(); 
+            ws.send(JSON.stringify({ type: 'join_room', room: roomName, username: localUsername }));
+            updateOnlineUsersList();
         } else {
-            alert('Please enter a valid username and room name.');
+            alert('Please log in first and enter a valid room name.');
         }
     };
 
@@ -162,29 +220,38 @@
             activeRoomsList.innerHTML = '<p>Not connected to the server.</p>';
         }
     };
+    
+    connectToSignalingServer();
 
     function connectToSignalingServer() {
         ws = new WebSocket(signalingServerUrl);
         ws.onopen = () => {
             console.log('Connected to signaling server.');
-            ws.send(JSON.stringify({ type: 'join_room', room: roomName, username: localUsername }));
-            
-            if (userListInterval) { clearInterval(userListInterval); }
-            userListInterval = setInterval(() => {
-                updateOnlineUsersList();
-                ws.send(JSON.stringify({ type: 'get_active_rooms' }));
-            }, 10000); // 10 seconds
         };
 
         ws.onmessage = async (message) => {
             const data = JSON.parse(message.data);
             console.log('Received message:', data.type, 'from:', data.sender);
 
-            if (data.type === 'room_joined') {
+            if (data.type === 'registration_success') {
+                authStatus.textContent = 'Registration successful! Please log in.';
+            } else if (data.type === 'login_success') {
+                localUsername = data.username;
+                authSection.style.display = 'none';
+                mainApp.style.display = 'flex';
+                statusMessage.textContent = `Hello, ${localUsername}! Enter a room name and click Join.`;
+            } else if (data.type === 'error') {
+                authStatus.textContent = `Error: ${data.message}`;
+            } else if (data.type === 'room_joined') {
                 localPeerId = data.peerId;
                 statusMessage.textContent = `You are in room '${roomName}' as '${localUsername}'. Waiting for others...`;
                 mediaControls.style.display = 'block';
-                updateOnlineUsersList(); 
+                updateOnlineUsersList();
+                if (userListInterval) { clearInterval(userListInterval); }
+                userListInterval = setInterval(() => {
+                    updateOnlineUsersList();
+                    ws.send(JSON.stringify({ type: 'get_active_rooms' }));
+                }, 10000);
             } else if (data.type === 'peer_joined') {
                 peerUsernames[data.peerId] = data.username;
                 createPeerConnection(data.peerId);
@@ -204,19 +271,18 @@
             } else if (data.type === 'chat_history') {
                 chatbox.innerHTML = '';
                 data.history.forEach(msg => {
+                    const isMyMessage = msg.sender === localUsername;
                     if (msg.type === 'text') {
-                        const isMyMessage = msg.senderId === localPeerId;
-                        addMessageToChat(isMyMessage ? 'You' : msg.sender, msg.text, isMyMessage);
+                        addMessageToChat(isMyMessage ? 'You' : msg.sender, msg.content, isMyMessage);
                     } else if (msg.type === 'image') {
-                        const isMyMessage = msg.senderId === localPeerId;
-                        addImageToChat(isMyMessage ? 'You' : msg.sender, msg.image, isMyMessage);
+                        addImageToChat(isMyMessage ? 'You' : msg.sender, msg.content, isMyMessage);
                     }
                 });
             } else if (data.type === 'chat_message') {
-                const isMyMessage = data.message.senderId === localPeerId;
+                const isMyMessage = data.message.sender === localUsername;
                 addMessageToChat(isMyMessage ? 'You' : data.message.sender, data.message.text, isMyMessage);
             } else if (data.type === 'image_message') {
-                const isMyMessage = data.message.senderId === localPeerId;
+                const isMyMessage = data.message.sender === localUsername;
                 addImageToChat(isMyMessage ? 'You' : data.message.sender, data.message.image, isMyMessage);
             } else if (data.type === 'active_rooms_list') {
                 displayActiveRooms(data.rooms);
@@ -243,7 +309,7 @@
             }
         };
 
-        ws.onclose = () => { 
+        ws.onclose = () => {
             console.log('Disconnected from signaling server.');
             if (userListInterval) { clearInterval(userListInterval); }
         };
@@ -276,8 +342,6 @@
         const pc = new RTCPeerConnection(configuration);
         peerConnections[peerId] = pc;
 
-        // **CORRECTION:** Add the local stream to the peer connection here.
-        // This ensures every new peer gets the stream as soon as the connection is established.
         if (localStream) {
             localStream.getTracks().forEach(track => {
                 pc.addTrack(track, localStream);
@@ -568,4 +632,3 @@
 </script>
 </body>
 </html>
-
