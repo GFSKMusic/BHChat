@@ -1,7 +1,8 @@
 {
   "dependencies": {
     "uuid": "^11.1.0",
-    "ws": "^8.18.3"
+    "ws": "^8.18.3",
+    "better-sqlite3": "^11.1.2"
   },
   "name": "bhchat-main",
   "version": "1.0.0",
