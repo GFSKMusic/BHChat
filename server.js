@@ -43,6 +43,27 @@ wss.on('connection', ws => {
                     return;
                 }
                 
+                // If the user is already in a room, remove them first
+                if (ws.room && rooms[ws.room]) {
+                    const oldRoomPeers = rooms[ws.room];
+                    const updatedPeers = oldRoomPeers.filter(client => client.id !== ws.id);
+                    rooms[ws.room] = updatedPeers;
+                    
+                    if (updatedPeers.length === 0) {
+                        delete rooms[ws.room];
+                        delete roomMessages[ws.room];
+                    } else {
+                        updatedPeers.forEach(client => {
+                            if (client.readyState === WebSocket.OPEN) {
+                                client.send(JSON.stringify({
+                                    type: 'peer_left',
+                                    peerId: ws.id,
+                                }));
+                            }
+                        });
+                    }
+                }
+
                 if (!rooms[data.room]) {
                     rooms[data.room] = [];
                 }
@@ -56,11 +77,13 @@ wss.on('connection', ws => {
                 
                 console.log(`Peer ${ws.id} (${ws.username}) joined room '${data.room}'. Total peers: ${rooms[data.room].length}`);
                 
+                // Send chat history to the new user
                 ws.send(JSON.stringify({
                     type: 'chat_history',
                     history: roomMessages[data.room]
                 }));
 
+                // Notify all existing peers in the room that a new peer has joined
                 rooms[data.room].forEach(client => {
                     if (client !== ws && client.readyState === WebSocket.OPEN) {
                         client.send(JSON.stringify({
@@ -71,6 +94,7 @@ wss.on('connection', ws => {
                     }
                 });
 
+                // Send the new peer a list of all existing peers in the room
                 rooms[data.room].forEach(client => {
                     if (client !== ws && client.readyState === WebSocket.OPEN) {
                         ws.send(JSON.stringify({
@@ -98,8 +122,9 @@ wss.on('connection', ws => {
                 };
                 roomMessages[data.room].push(chatMessage);
                 
+                // Broadcast to all clients in the room (including sender to show it instantly)
                 rooms[data.room].forEach(client => {
-                    if (client !== ws && client.readyState === WebSocket.OPEN) {
+                    if (client.readyState === WebSocket.OPEN) {
                         client.send(JSON.stringify({
                             type: 'chat_message',
                             message: chatMessage
@@ -118,8 +143,9 @@ wss.on('connection', ws => {
                 };
                 roomMessages[data.room].push(imageMessage);
                 
+                // Broadcast to all clients in the room (including sender)
                 rooms[data.room].forEach(client => {
-                    if (client !== ws && client.readyState === WebSocket.OPEN) {
+                    if (client.readyState === WebSocket.OPEN) {
                         client.send(JSON.stringify({
                             type: 'image_message',
                             message: imageMessage
@@ -128,13 +154,31 @@ wss.on('connection', ws => {
                 });
                 break;
 
-            case 'offer':
-            case 'answer':
-            case 'candidate':
-                const targetPeer = rooms[data.room].find(client => client.id === data.targetPeer);
-                if (targetPeer && targetPeer.readyState === WebSocket.OPEN) {
-                    targetPeer.send(JSON.stringify(data.description ? { ...data, description: data.description, username: ws.username } : data));
+            case 'new_dm_message':
+                const dmMessage = {
+                    ...data.message,
+                    senderId: ws.id
+                };
+                const targetClient = rooms[ws.room].find(client => client.id === data.target);
+                
+                // Send to the target peer and back to the sender
+                if (targetClient && targetClient.readyState === WebSocket.OPEN) {
+                    targetClient.send(JSON.stringify({ type: 'dm_message', message: dmMessage }));
+                    ws.send(JSON.stringify({ type: 'dm_message', message: dmMessage }));
                 }
+                break;
+
+            case 'get_online_users':
+                const onlineUsers = {};
+                if (rooms[data.room]) {
+                    rooms[data.room].forEach(client => {
+                        onlineUsers[client.id] = { username: client.username };
+                    });
+                }
+                ws.send(JSON.stringify({
+                    type: 'online_users_list',
+                    users: onlineUsers
+                }));
                 break;
             
             case 'get_active_rooms':
@@ -151,6 +195,15 @@ wss.on('connection', ws => {
                     type: 'active_rooms_list',
                     rooms: activeRooms
                 }));
+                break;
+            
+            case 'offer':
+            case 'answer':
+            case 'candidate':
+                const targetPeer = rooms[data.room].find(client => client.id === data.targetPeer);
+                if (targetPeer && targetPeer.readyState === WebSocket.OPEN) {
+                    targetPeer.send(JSON.stringify(data.description ? { ...data, description: data.description, username: ws.username } : data));
+                }
                 break;
         }
     });
