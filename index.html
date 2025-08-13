@@ -1,173 +1,80 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>BHChat</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script type="module">
-        // The following variables are not used in the WebSocket version, but are required for the Canvas environment.
-        const firebaseConfig = {};
-        const initialAuthToken = null;
-        const appId = 'default-app-id';
-
-        // Placeholder for WebSocket. Replace this with your own WSS server URL.
-        const wssUrl = 'wss://bhchat.onrender.com';
-
-        let ws;
-        let userId = Math.random().toString(36).substring(2, 15); // A simple unique ID for this user
-        let localUsername = localStorage.getItem('username') || '';
-        let roomName;
-        
-        let isAuthReady = false;
-        
-        // This is a simplified "authentication" step to make sure the user has a username.
-        function authSimulation() {
-            isAuthReady = true;
-            if (localUsername) {
-                joinRoom();
-            } else {
-                statusMessage.textContent = 'Please enter a username and room name, then click Join.';
-                joinButton.disabled = false;
-            }
-        }
-        
-        window.onload = authSimulation;
-
-    </script>
+    <title>Multi-Peer LAN WebRTC Chat</title>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: #f0f2f5;
-            margin: 0;
-            padding: 20px;
-            display: flex;
-            justify-content: center;
-        }
-        .container {
-            width: 90%;
-            max-width: 1200px;
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
-        }
-        h1 { font-size: 2em; text-align: center; margin-bottom: 20px; }
-        h2 { font-size: 1.5em; text-align: center; }
-        h3 { font-size: 1.2em; margin-bottom: 10px; }
-        p { font-size: 1em; }
-
-        .chat-section {
-            display: flex;
-            gap: 20px;
-        }
-        .sidebar {
-            width: 250px;
-            background-color: white;
-            border-radius: 8px;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-            padding: 20px;
-        }
-        .chat-container {
-            flex-grow: 1;
-            background-color: white;
-            border-radius: 8px;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-            padding: 20px;
-            display: flex;
-            flex-direction: column;
-            height: 400px;
-        }
-        #chatbox {
-            flex-grow: 1;
-            overflow-y: auto;
-            border-bottom: 1px solid #ddd;
-            margin-bottom: 10px;
-            padding: 5px;
-        }
+        body { font-family: sans-serif; background-color: #f0f2f5; margin: 0; padding: 20px; display: flex; justify-content: center; }
+        .container { width: 90%; max-width: 1200px; display: flex; flex-direction: column; gap: 20px; }
+        #controls { text-align: center; margin-bottom: 20px; }
+        #room-input, #username-input { padding: 10px; border: 1px solid #ddd; border-radius: 5px; margin-right: 10px; }
+        #join-button, #refresh-rooms-button { padding: 10px 20px; font-size: 16px; background-color: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        #join-button:hover, #refresh-rooms-button:hover { background-color: #0056b3; }
+        .control-buttons { margin-top: 10px; }
+        .control-buttons button { padding: 8px 16px; font-size: 14px; margin: 0 5px; border-radius: 5px; border: 1px solid #ccc; cursor: pointer; }
+        .video-container { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+        .video-wrapper { position: relative; width: 45%; max-width: 500px; min-width: 300px; background-color: #000; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+        video { width: 100%; height: auto; display: block; background-color: #000; }
+        .video-label { position: absolute; bottom: 10px; left: 10px; color: white; background-color: rgba(0,0,0,0.5); padding: 5px 10px; border-radius: 5px; }
+        .chat-section { display: flex; gap: 20px; }
+        .sidebar { width: 250px; background-color: white; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); padding: 10px; }
+        .chat-container { flex-grow: 1; background-color: white; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); padding: 20px; display: flex; flex-direction: column; height: 400px; }
+        #chatbox { flex-grow: 1; overflow-y: auto; border-bottom: 1px solid #ddd; margin-bottom: 10px; padding: 5px; }
         #chat-input-form { display: flex; }
-        #chat-input {
-            flex-grow: 1;
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            margin-right: 10px;
-        }
-        #send-button {
-            padding: 10px 20px;
-            background-color: #007bff;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-        }
+        #chat-input { flex-grow: 1; padding: 10px; border: 1px solid #ddd; border-radius: 5px; margin-right: 10px; }
+        #send-button { padding: 10px 20px; background-color: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; }
         #send-button:hover { background-color: #0056b3; }
-        #upload-image-button {
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            margin-right: 10px;
-        }
+        #upload-image-button { padding: 10px; border: 1px solid #ddd; border-radius: 5px; margin-right: 10px; }
         .message { margin: 5px 0; }
         .my-message { text-align: right; color: #007bff; }
-        .message img { max-width: 200px; display: block; }
-        .active-rooms-container {
-            margin-top: 20px;
-            background-color: white;
-            border-radius: 8px;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-            padding: 20px;
-        }
-        ul { list-style-type: none; padding: 0; }
-        li {
-            margin: 5px 0;
-            cursor: pointer;
-            padding: 5px;
-            border-radius: 4px;
-        }
-        li.active-chat {
-            background-color: #e2e8f0;
-            font-weight: bold;
-        }
+        .active-rooms-container { margin-top: 20px; background-color: white; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); padding: 20px; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1 class="text-3xl text-center font-bold mb-4">BHChat</h1>
+    <h1 style="text-align: center;">Multi-Peer LAN WebRTC Chat</h1>
 
-    <div id="controls" class="text-center mb-4 p-4 bg-white rounded-lg shadow">
-        <input type="text" id="username-input" placeholder="Enter your username" class="p-2 border rounded mr-2">
-        <input type="text" id="room-input" placeholder="Enter Room Name" value="default-room" class="p-2 border rounded mr-2">
-        <button id="join-button" class="p-2 px-4 bg-blue-500 text-white rounded">Join Room</button>
-        <p id="status-message" class="mt-2 text-gray-600">Please enter a username and room name, then click Join.</p>
+    <div id="controls">
+        <input type="text" id="username-input" placeholder="Enter your username">
+        <input type="text" id="room-input" placeholder="Enter Room Name" value="default-room">
+        <button id="join-button">Join Room</button>
+        <button id="refresh-rooms-button">Refresh Active Rooms</button>
+        <p id="status-message">Please enter a username and room name, then click Join.</p>
+        <div id="media-controls" style="display:none;" class="control-buttons">
+            <button id="call-button">Start Call</button>
+            <button id="hangup-button" style="display:none;">Hang Up</button>
+        </div>
     </div>
     
-    <div class="chat-section mt-4">
-        <div class="sidebar p-4 bg-white rounded-lg shadow">
-            <h3 class="text-xl font-semibold mb-2">Online Users</h3>
+    <div id="video-grid" class="video-container">
+    </div>
+
+    <div class="chat-section">
+        <div class="sidebar">
+            <h3>Online Users</h3>
             <ul id="online-users-list"></ul>
         </div>
 
-        <div class="chat-container p-4 bg-white rounded-lg shadow flex flex-col h-96">
-            <h2 id="chat-title" class="text-xl font-semibold mb-2">Room Chat</h2>
-            <div id="chatbox" class="flex-grow overflow-y-auto border-b pb-2 mb-2"></div>
-            <form id="chat-input-form" class="flex">
+        <div class="chat-container">
+            <h2 id="chat-title">Room Chat</h2>
+            <div id="chatbox"></div>
+            <form id="chat-input-form">
                 <input type="file" id="image-input" accept="image/*" style="display:none;">
-                <button type="button" id="upload-image-button" class="p-2 bg-gray-200 text-xl rounded mr-2">🖼️</button>
-                <input type="text" id="chat-input" placeholder="Type a message..." autocomplete="off" class="flex-grow p-2 border rounded mr-2">
-                <button type="submit" id="send-button" class="p-2 px-4 bg-blue-500 text-white rounded">Send</button>
+                <button type="button" id="upload-image-button">🖼️</button>
+                <input type="text" id="chat-input" placeholder="Type a message..." autocomplete="off">
+                <button type="submit" id="send-button">Send</button>
             </form>
         </div>
     </div>
 
-    <!-- The Active Rooms section is not supported with this simple WebSocket implementation -->
-    <!-- <div class="active-rooms-container mt-4">
-        <h2 class="text-xl font-semibold mb-2">Active Rooms</h2>
+    <div class="active-rooms-container">
+        <h2>Active Rooms</h2>
         <div id="active-rooms-list"></div>
-    </div> -->
+    </div>
 </div>
 
 <script>
-    // UI elements
+    const videoGrid = document.getElementById('video-grid');
     const chatbox = document.getElementById('chatbox');
     const chatInput = document.getElementById('chat-input');
     const chatInputForm = document.getElementById('chat-input-form');
@@ -175,121 +82,354 @@
     const usernameInput = document.getElementById('username-input');
     const joinButton = document.getElementById('join-button');
     const statusMessage = document.getElementById('status-message');
+    const mediaControls = document.getElementById('media-controls');
+    const callButton = document.getElementById('call-button');
+    const hangupButton = document.getElementById('hangup-button');
     const imageInput = document.getElementById('image-input');
     const uploadImageButton = document.getElementById('upload-image-button');
+    const activeRoomsList = document.getElementById('active-rooms-list');
+    const refreshRoomsButton = document.getElementById('refresh-rooms-button');
     const onlineUsersList = document.getElementById('online-users-list');
     const chatTitle = document.getElementById('chat-title');
-    
-    // --- Core App Functions ---
 
-    function joinRoom() {
-        if (!isAuthReady) {
-            console.error("Authentication not ready.");
-            return;
-        }
+    let localStream;
+    let localPeerId;
+    let localUsername;
+    let roomName;
+    const peerConnections = {};
+    const peerUsernames = {};
+    const dataChannels = {};
+    let currentChatTarget = 'room';
+    const dmHistory = {};
+    let userListInterval;
 
-        // Close any existing WebSocket connection before creating a new one
-        if (ws && ws.readyState === WebSocket.OPEN) {
-            ws.close();
-        }
+    const signalingServerUrl = 'wss://bhchat.onrender.com';
+    let ws;
 
-        ws = new WebSocket(wssUrl);
+    const configuration = {
+        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+    };
 
-        ws.onopen = () => {
-            console.log('WebSocket connected.');
-            statusMessage.textContent = 'Connected to WSS server. Ready to chat.';
-            joinButton.disabled = true;
-
-            // Send a "join" message to the server
-            const joinMessage = {
-                type: 'join',
-                room: roomName,
-                userId: userId,
-                username: localUsername
-            };
-            ws.send(JSON.stringify(joinMessage));
-        };
-
-        ws.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            console.log('Received:', data);
-            
-            switch (data.type) {
-                case 'message':
-                    // A new message from the server
-                    const isMyMessage = data.userId === userId;
-                    if (data.messageType === 'text') {
-                        addMessageToChat(isMyMessage ? 'You' : data.username, data.content, isMyMessage);
-                    } else if (data.messageType === 'image') {
-                        addImageToChat(isMyMessage ? 'You' : data.username, data.content, isMyMessage);
-                    }
-                    break;
-                case 'users':
-                    // An update to the list of online users
-                    displayOnlineUsers(data.users);
-                    break;
-                case 'history':
-                    // Initial message history from the server
-                    chatbox.innerHTML = '';
-                    data.messages.forEach(msg => {
-                        const isMyMessage = msg.userId === userId;
-                        if (msg.messageType === 'text') {
-                            addMessageToChat(isMyMessage ? 'You' : msg.username, msg.content, isMyMessage);
-                        } else if (msg.messageType === 'image') {
-                            addImageToChat(isMyMessage ? 'You' : msg.username, msg.content, isMyMessage);
-                        }
-                    });
-                    break;
-                default:
-                    console.warn('Unknown message type:', data.type);
+    callButton.onclick = async () => {
+        try {
+            localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+            addLocalVideoElement();
+            for (const peerId in peerConnections) {
+                const pc = peerConnections[peerId];
+                // Local stream is already attached to all new peer connections in createPeerConnection.
+                // We just need to trigger an offer to tell them we have a stream.
+                createOffer(pc, peerId);
             }
-        };
+            callButton.style.display = 'none';
+            hangupButton.style.display = 'inline-block';
+        } catch (error) {
+            console.error('Error getting user media:', error);
+            alert('Could not get your camera and microphone. Please check permissions.');
+        }
+    };
 
-        ws.onclose = () => {
-            console.log('WebSocket connection closed.');
-            statusMessage.textContent = 'Connection to server lost. Please refresh or try again.';
-            joinButton.disabled = false;
-        };
-
-        ws.onerror = (error) => {
-            console.error('WebSocket error:', error);
-            statusMessage.textContent = 'An error occurred with the connection. Check the console for details.';
-        };
-    }
-    
-    // --- Event Handlers ---
+    hangupButton.onclick = () => {
+        if (localStream) {
+            localStream.getTracks().forEach(track => track.stop());
+            localStream = null;
+        }
+        for (const peerId in peerConnections) {
+            peerConnections[peerId].close();
+            delete peerConnections[peerId];
+        }
+        videoGrid.innerHTML = '';
+        callButton.style.display = 'inline-block';
+        hangupButton.style.display = 'none';
+    };
 
     joinButton.onclick = () => {
-        localUsername = usernameInput.value.trim();
         roomName = roomInput.value.trim();
-        if (localUsername && roomName) {
-            localStorage.setItem('username', localUsername);
+        localUsername = usernameInput.value.trim();
+        if (roomName && localUsername) {
             statusMessage.textContent = `Joining room '${roomName}' as '${localUsername}'...`;
-            joinRoom();
-            chatTitle.textContent = `Room Chat: ${roomName}`;
+            connectToSignalingServer();
+            // Trigger an immediate update
+            updateOnlineUsersList(); 
         } else {
             alert('Please enter a valid username and room name.');
         }
     };
+
+    refreshRoomsButton.onclick = () => {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'get_active_rooms' }));
+        } else {
+            activeRoomsList.innerHTML = '<p>Not connected to the server.</p>';
+        }
+    };
+
+    function connectToSignalingServer() {
+        ws = new WebSocket(signalingServerUrl);
+        ws.onopen = () => {
+            console.log('Connected to signaling server.');
+            ws.send(JSON.stringify({ type: 'join_room', room: roomName, username: localUsername }));
+            
+            if (userListInterval) { clearInterval(userListInterval); }
+            userListInterval = setInterval(() => {
+                updateOnlineUsersList();
+                ws.send(JSON.stringify({ type: 'get_active_rooms' }));
+            }, 10000); // 10 seconds
+        };
+
+        ws.onmessage = async (message) => {
+            const data = JSON.parse(message.data);
+            console.log('Received message:', data.type, 'from:', data.sender);
+
+            if (data.type === 'room_joined') {
+                localPeerId = data.peerId;
+                statusMessage.textContent = `You are in room '${roomName}' as '${localUsername}'. Waiting for others...`;
+                mediaControls.style.display = 'block';
+                updateOnlineUsersList(); 
+            } else if (data.type === 'peer_joined') {
+                peerUsernames[data.peerId] = data.username;
+                createPeerConnection(data.peerId);
+                updateOnlineUsersList();
+            } else if (data.type === 'offer') {
+                peerUsernames[data.sender] = data.username;
+                await handleOffer(data);
+            } else if (data.type === 'answer') {
+                peerUsernames[data.sender] = data.username;
+                await handleAnswer(data);
+            } else if (data.type === 'candidate') {
+                await handleCandidate(data);
+            } else if (data.type === 'peer_left') {
+                removePeerConnection(data.peerId);
+                delete peerUsernames[data.peerId];
+                updateOnlineUsersList();
+            } else if (data.type === 'chat_history') {
+                chatbox.innerHTML = '';
+                data.history.forEach(msg => {
+                    if (msg.type === 'text') {
+                        const isMyMessage = msg.senderId === localPeerId;
+                        addMessageToChat(isMyMessage ? 'You' : msg.sender, msg.text, isMyMessage);
+                    } else if (msg.type === 'image') {
+                        const isMyMessage = msg.senderId === localPeerId;
+                        addImageToChat(isMyMessage ? 'You' : msg.sender, msg.image, isMyMessage);
+                    }
+                });
+            } else if (data.type === 'chat_message') {
+                const isMyMessage = data.message.senderId === localPeerId;
+                addMessageToChat(isMyMessage ? 'You' : data.message.sender, data.message.text, isMyMessage);
+            } else if (data.type === 'image_message') {
+                const isMyMessage = data.message.senderId === localPeerId;
+                addImageToChat(isMyMessage ? 'You' : data.message.sender, data.message.image, isMyMessage);
+            } else if (data.type === 'active_rooms_list') {
+                displayActiveRooms(data.rooms);
+            } else if (data.type === 'online_users_list') {
+                for(let peerId in peerUsernames) {
+                    if(!data.users[peerId]) {
+                        delete peerUsernames[peerId];
+                    }
+                }
+                for (let peerId in data.users) {
+                    peerUsernames[peerId] = data.users[peerId].username;
+                }
+                displayOnlineUsers(data.users);
+            } else if (data.type === 'dm_message') {
+                const senderId = data.message.senderId;
+                const senderName = data.message.sender;
+                if (!dmHistory[senderId]) {
+                    dmHistory[senderId] = [];
+                }
+                dmHistory[senderId].push(data.message);
+                if (currentChatTarget === senderId) {
+                    addMessageToChat(senderName, data.message.text);
+                }
+            }
+        };
+
+        ws.onclose = () => { 
+            console.log('Disconnected from signaling server.');
+            if (userListInterval) { clearInterval(userListInterval); }
+        };
+        ws.onerror = (error) => { console.error('WebSocket error:', error); };
+    }
+
+    function addLocalVideoElement() {
+        const videoWrapper = document.createElement('div');
+        videoWrapper.className = 'video-wrapper';
+        const video = document.createElement('video');
+        video.id = `video-local-${localPeerId}`;
+        video.autoplay = true;
+        video.playsinline = true;
+        video.muted = true;
+        video.srcObject = localStream;
+        const label = document.createElement('div');
+        label.className = 'video-label';
+        label.textContent = localUsername;
+        videoWrapper.appendChild(video);
+        videoWrapper.appendChild(label);
+        videoGrid.appendChild(videoWrapper);
+    }
     
+    function createPeerConnection(peerId) {
+        if (peerConnections[peerId]) {
+            console.log(`Connection to peer ${peerId} already exists.`);
+            return;
+        }
+
+        const pc = new RTCPeerConnection(configuration);
+        peerConnections[peerId] = pc;
+
+        // **CORRECTION:** Add the local stream to the peer connection here.
+        // This ensures every new peer gets the stream as soon as the connection is established.
+        if (localStream) {
+            localStream.getTracks().forEach(track => {
+                pc.addTrack(track, localStream);
+            });
+        }
+
+        pc.ontrack = (event) => {
+            const remoteUsername = peerUsernames[peerId] || `Peer ${peerId}`;
+            addRemoteVideoElement(peerId, event.streams[0], remoteUsername);
+        };
+
+        pc.onicecandidate = (event) => {
+            if (event.candidate) {
+                ws.send(JSON.stringify({
+                    type: 'candidate',
+                    room: roomName,
+                    targetPeer: peerId,
+                    candidate: event.candidate,
+                }));
+            }
+        };
+        
+        const dataChannel = pc.createDataChannel('chat');
+        dataChannels[peerId] = dataChannel;
+        setupDataChannelEvents(dataChannel, peerId);
+
+        pc.ondatachannel = (event) => {
+            dataChannels[peerId] = event.channel;
+            setupDataChannelEvents(dataChannels[peerId], peerId);
+        };
+        
+        if (Object.keys(peerConnections).length === 1 && localStream) {
+            createOffer(pc, peerId);
+        }
+    }
+
+    async function createOffer(pc, peerId) {
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        ws.send(JSON.stringify({
+            type: 'offer',
+            room: roomName,
+            targetPeer: peerId,
+            description: pc.localDescription,
+            username: localUsername,
+        }));
+    }
+
+    async function handleOffer(data) {
+        createPeerConnection(data.sender);
+        const pc = peerConnections[data.sender];
+        await pc.setRemoteDescription(new RTCSessionDescription(data.description));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        ws.send(JSON.stringify({
+            type: 'answer',
+            room: roomName,
+            targetPeer: data.sender,
+            description: pc.localDescription,
+            username: localUsername,
+        }));
+    }
+
+    async function handleAnswer(data) {
+        const pc = peerConnections[data.sender];
+        if (pc) {
+            await pc.setRemoteDescription(new RTCSessionDescription(data.description));
+        }
+    }
+
+    async function handleCandidate(data) {
+        const pc = peerConnections[data.sender];
+        if (pc) {
+            try {
+                await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+            } catch (e) {
+                console.error('Error adding received ICE candidate', e);
+            }
+        }
+    }
+
+    function removePeerConnection(peerId) {
+        if (peerConnections[peerId]) {
+            peerConnections[peerId].close();
+            delete peerConnections[peerId];
+        }
+        const videoElement = document.getElementById(`video-${peerId}`);
+        if (videoElement) {
+            videoElement.parentNode.remove();
+        }
+    }
+
+    function addRemoteVideoElement(peerId, stream, username) {
+        if (document.getElementById(`video-${peerId}`)) return;
+
+        const videoWrapper = document.createElement('div');
+        videoWrapper.className = 'video-wrapper';
+        const video = document.createElement('video');
+        video.id = `video-${peerId}`;
+        video.autoplay = true;
+        video.playsinline = true;
+        video.srcObject = stream;
+        const label = document.createElement('div');
+        label.className = 'video-label';
+        label.textContent = username;
+        videoWrapper.appendChild(video);
+        videoWrapper.appendChild(label);
+        videoGrid.appendChild(videoWrapper);
+    }
+    
+    function setupDataChannelEvents(dc, peerId) {
+        dc.onopen = (event) => { console.log(`Data channel to peer ${peerId} is open.`); };
+        dc.onmessage = (event) => { addMessageToChat(`Peer ${peerId}`, event.data); };
+        dc.onclose = () => { console.log(`Data channel to peer ${peerId} is closed.`); };
+    }
+
     chatInputForm.addEventListener('submit', (e) => {
         e.preventDefault();
-        const message = chatInput.value.trim();
-        if (message === '' || ws.readyState !== WebSocket.OPEN) return;
-
-        const chatMessage = {
-            type: 'message',
-            room: roomName,
-            userId: userId,
-            username: localUsername,
-            messageType: 'text',
-            content: message
-        };
-        ws.send(JSON.stringify(chatMessage));
-        chatInput.value = '';
+        const message = chatInput.value;
+        if (message.trim() !== '') {
+            if (currentChatTarget === 'room') {
+                ws.send(JSON.stringify({
+                    type: 'new_chat_message',
+                    room: roomName,
+                    message: message,
+                }));
+                addMessageToChat('You', message, true);
+            } else {
+                const targetPeerId = currentChatTarget;
+                const dmMessage = {
+                    type: 'text',
+                    sender: localUsername,
+                    text: message,
+                };
+                if (!dmHistory[targetPeerId]) {
+                    dmHistory[targetPeerId] = [];
+                }
+                dmHistory[targetPeerId].push({ ...dmMessage, senderId: localPeerId });
+                ws.send(JSON.stringify({
+                    type: 'new_dm_message',
+                    target: targetPeerId,
+                    message: dmMessage,
+                }));
+                addMessageToChat('You', message, true);
+            }
+            chatInput.value = '';
+        }
     });
 
-    uploadImageButton.onclick = () => { imageInput.click(); };
+    uploadImageButton.onclick = () => {
+        imageInput.click();
+    };
 
     imageInput.onchange = (event) => {
         const file = event.target.files[0];
@@ -297,44 +437,50 @@
             const reader = new FileReader();
             reader.onload = (e) => {
                 const imageData = e.target.result;
-                const imageMessage = {
-                    type: 'message',
-                    room: roomName,
-                    userId: userId,
-                    username: localUsername,
-                    messageType: 'image',
-                    content: imageData
-                };
-                ws.send(JSON.stringify(imageMessage));
+                if (currentChatTarget === 'room') {
+                    ws.send(JSON.stringify({
+                        type: 'new_image_message',
+                        room: roomName,
+                        image: imageData,
+                    }));
+                    addImageToChat('You', imageData, true);
+                } else {
+                    const targetPeerId = currentChatTarget;
+                    const dmImage = {
+                        type: 'image',
+                        sender: localUsername,
+                        image: imageData,
+                    };
+                    if (!dmHistory[targetPeerId]) {
+                        dmHistory[targetPeerId] = [];
+                    }
+                    dmHistory[targetPeerId].push({ ...dmImage, senderId: localPeerId });
+                    ws.send(JSON.stringify({
+                        type: 'new_dm_message',
+                        target: targetPeerId,
+                        message: dmImage,
+                    }));
+                    addImageToChat('You', imageData, true);
+                }
             };
             reader.readAsDataURL(file);
         }
         imageInput.value = '';
     };
 
-    // --- UI Helper Functions ---
-
     function addMessageToChat(sender, message, isMyMessage = false) {
         const messageElement = document.createElement('div');
         messageElement.textContent = `${sender}: ${message}`;
-        messageElement.classList.add('message', 'p-2', 'rounded-lg', 'my-2', 'break-words');
-        if (isMyMessage) {
-            messageElement.classList.add('bg-blue-100', 'text-right', 'ml-auto');
-        } else {
-            messageElement.classList.add('bg-gray-100', 'text-left', 'mr-auto');
-        }
+        messageElement.classList.add('message');
+        if (isMyMessage) { messageElement.classList.add('my-message'); }
         chatbox.appendChild(messageElement);
         chatbox.scrollTop = chatbox.scrollHeight;
     }
 
     function addImageToChat(sender, imageData, isMyMessage = false) {
         const messageElement = document.createElement('div');
-        messageElement.classList.add('message', 'p-2', 'rounded-lg', 'my-2', 'break-words');
-        if (isMyMessage) {
-            messageElement.classList.add('bg-blue-100', 'text-right', 'ml-auto');
-        } else {
-            messageElement.classList.add('bg-gray-100', 'text-left', 'mr-auto');
-        }
+        messageElement.classList.add('message');
+        if (isMyMessage) { messageElement.classList.add('my-message'); }
 
         const senderElement = document.createElement('span');
         senderElement.textContent = `${sender}: `;
@@ -342,25 +488,83 @@
 
         const imageElement = document.createElement('img');
         imageElement.src = imageData;
-        imageElement.classList.add('max-w-xs', 'rounded');
+        imageElement.style.maxWidth = '200px';
+        imageElement.style.display = 'block';
         messageElement.appendChild(imageElement);
 
         chatbox.appendChild(messageElement);
         chatbox.scrollTop = chatbox.scrollHeight;
     }
 
-    function displayOnlineUsers(users) {
-        onlineUsersList.innerHTML = '';
-        if (users && users.length > 0) {
-            users.forEach(user => {
-                const listItem = document.createElement('li');
-                listItem.textContent = user.username;
-                listItem.classList.add('p-2', 'hover:bg-gray-100', 'cursor-pointer', 'rounded');
-                onlineUsersList.appendChild(listItem);
+    function displayActiveRooms(rooms) {
+        activeRoomsList.innerHTML = '';
+        if (Object.keys(rooms).length === 0) {
+            activeRoomsList.innerHTML = '<p>No active rooms found.</p>';
+            return;
+        }
+
+        const roomListElement = document.createElement('ul');
+        for (const roomName in rooms) {
+            const roomData = rooms[roomName];
+            const listItem = document.createElement('li');
+            listItem.textContent = `Room: ${roomName} | Active Users: ${roomData.count}`;
+            
+            const userList = document.createElement('ul');
+            roomData.users.forEach(user => {
+                const userItem = document.createElement('li');
+                userItem.textContent = user;
+                userList.appendChild(userItem);
             });
+            listItem.appendChild(userList);
+
+            roomListElement.appendChild(listItem);
+        }
+        activeRoomsList.appendChild(roomListElement);
+    }
+
+    function updateOnlineUsersList() {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'get_online_users', room: roomName }));
         }
     }
-    
+
+    function displayOnlineUsers(users) {
+        onlineUsersList.innerHTML = '';
+        const roomChatListItem = document.createElement('li');
+        roomChatListItem.textContent = `Room: ${roomName}`;
+        roomChatListItem.style.cursor = 'pointer';
+        roomChatListItem.onclick = () => {
+            currentChatTarget = 'room';
+            chatTitle.textContent = `Room Chat: ${roomName}`;
+            chatbox.innerHTML = '';
+        };
+        onlineUsersList.appendChild(roomChatListItem);
+
+        for (const peerId in users) {
+            if (peerId !== localPeerId) {
+                const user = users[peerId];
+                const listItem = document.createElement('li');
+                listItem.textContent = user.username;
+                listItem.style.cursor = 'pointer';
+                listItem.onclick = () => {
+                    currentChatTarget = peerId;
+                    chatTitle.textContent = `DM with ${user.username}`;
+                    chatbox.innerHTML = '';
+                    if (dmHistory[peerId]) {
+                        dmHistory[peerId].forEach(msg => {
+                            const isMyMessage = msg.senderId === localPeerId;
+                            if (msg.type === 'text') {
+                                addMessageToChat(isMyMessage ? 'You' : msg.sender, msg.text, isMyMessage);
+                            } else if (msg.type === 'image') {
+                                addImageToChat(isMyMessage ? 'You' : msg.sender, msg.image, isMyMessage);
+                            }
+                        });
+                    }
+                };
+                onlineUsersList.appendChild(listItem);
+            }
+        }
+    }
 </script>
 </body>
 </html>
