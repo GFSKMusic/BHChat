@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>BHChat</title>
+    <title>Harmony</title>
     <style>
         body { font-family: sans-serif; background-color: #f0f2f5; margin: 0; padding: 20px; display: flex; justify-content: center; }
         .container { width: 90%; max-width: 1200px; display: flex; flex-direction: column; gap: 20px; }
@@ -77,7 +77,7 @@
 <body>
 
 <div id="auth-section">
-    <h2>Welcome to BHChat</h2>
+    <h2>Welcome to Harmony</h2>
     <input type="text" id="auth-username" placeholder="Enter username">
     <div class="password-container">
         <input type="password" id="auth-password" placeholder="Enter password">
@@ -89,7 +89,7 @@
 </div>
 
 <div id="main-app" class="container">
-    <h1 style="text-align: center;">BHChat</h1>
+    <h1 style="text-align: center;">Harmony</h1>
 
     <div id="controls">
         <input type="text" id="room-input" placeholder="Enter Room Name" value="default-room">
@@ -501,7 +501,6 @@
                     room: roomName,
                     message: message,
                 }));
-                addMessageToChat('You', message, true);
             } else {
                 const targetPeerId = currentChatTarget;
                 const dmMessage = {
@@ -518,7 +517,6 @@
                     target: targetPeerId,
                     message: dmMessage,
                 }));
-                addMessageToChat('You', message, true);
             }
             chatInput.value = '';
         }
@@ -540,7 +538,6 @@
                         room: roomName,
                         image: imageData,
                     }));
-                    addImageToChat('You', imageData, true);
                 } else {
                     const targetPeerId = currentChatTarget;
                     const dmImage = {
@@ -557,7 +554,6 @@
                         target: targetPeerId,
                         message: dmImage,
                     }));
-                    addImageToChat('You', imageData, true);
                 }
             };
             reader.readAsDataURL(file);
