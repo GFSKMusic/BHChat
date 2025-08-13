@@ -2,7 +2,6 @@
 <html>
 <head>
     <title>Harmony</title>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         body { font-family: sans-serif; background-color: #f0f2f5; margin: 0; padding: 20px; display: flex; justify-content: center; }
         .container { width: 90%; max-width: 1200px; display: flex; flex-direction: column; gap: 20px; }
@@ -134,11 +133,13 @@
 </div>
 
 <script type="module">
+    import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.7/+esm';
+
     // Supabase Initialization
     // *** IMPORTANT: Replace these placeholders with your actual Supabase project URL and anon key ***
     const SUPABASE_URL = 'https://pepvpyfgpyifqlepgvbp.supabase.co';
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlcHZweWZncHlpZnFsZXBndmJwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUwNTgyODMsImV4cCI6MjA3MDYzNDI4M30.uFkZZ9bsMrc5Vhr8rVsIhNRKI_HpO_Zjp351cc70nLM';
-    const supabase = Supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     const authSection = document.getElementById('auth-section');
     const mainApp = document.getElementById('main-app');
