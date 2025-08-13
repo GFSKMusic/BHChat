@@ -4,49 +4,34 @@
     <title>BHChat</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInWithCustomToken, onAuthStateChanged, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, onSnapshot, collection, query, where, addDoc, serverTimestamp, orderBy, getDocs, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        // The following variables are not used in the WebSocket version, but are required for the Canvas environment.
+        const firebaseConfig = {};
+        const initialAuthToken = null;
+        const appId = 'default-app-id';
 
-        // Global variables provided by the Canvas environment
-        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        // Placeholder for WebSocket. Replace this with your own WSS server URL.
+        const wssUrl = 'wss://bhchat.onrender.com';
 
-        // Initialize Firebase
-        const app = initializeApp(firebaseConfig);
-        const db = getFirestore(app);
-        const auth = getAuth(app);
-
-        let userId = null;
+        let ws;
+        let userId = Math.random().toString(36).substring(2, 15); // A simple unique ID for this user
+        let localUsername = localStorage.getItem('username') || '';
+        let roomName;
+        
         let isAuthReady = false;
-
-        // Sign in anonymously or with the provided token
-        onAuthStateChanged(auth, async (user) => {
-            if (user) {
-                userId = user.uid;
-                isAuthReady = true;
-                console.log("Firebase Auth Ready. User ID:", userId);
-
-                // Start the app logic after authentication
-                if (localUsername) {
-                    joinRoom();
-                } else {
-                    statusMessage.textContent = 'Please enter a username and room name, then click Join.';
-                    joinButton.disabled = false;
-                }
+        
+        // This is a simplified "authentication" step to make sure the user has a username.
+        function authSimulation() {
+            isAuthReady = true;
+            if (localUsername) {
+                joinRoom();
             } else {
-                try {
-                    if (initialAuthToken) {
-                        await signInWithCustomToken(auth, initialAuthToken);
-                    } else {
-                        await signInAnonymously(auth);
-                    }
-                } catch (error) {
-                    console.error("Firebase sign-in error:", error);
-                }
+                statusMessage.textContent = 'Please enter a username and room name, then click Join.';
+                joinButton.disabled = false;
             }
-        });
+        }
+        
+        window.onload = authSimulation;
+
     </script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
@@ -153,7 +138,6 @@
         <input type="text" id="username-input" placeholder="Enter your username" class="p-2 border rounded mr-2">
         <input type="text" id="room-input" placeholder="Enter Room Name" value="default-room" class="p-2 border rounded mr-2">
         <button id="join-button" class="p-2 px-4 bg-blue-500 text-white rounded">Join Room</button>
-        <button id="refresh-rooms-button" class="p-2 px-4 bg-gray-500 text-white rounded">Refresh Active Rooms</button>
         <p id="status-message" class="mt-2 text-gray-600">Please enter a username and room name, then click Join.</p>
     </div>
     
@@ -175,16 +159,14 @@
         </div>
     </div>
 
-    <div class="active-rooms-container mt-4">
+    <!-- The Active Rooms section is not supported with this simple WebSocket implementation -->
+    <!-- <div class="active-rooms-container mt-4">
         <h2 class="text-xl font-semibold mb-2">Active Rooms</h2>
         <div id="active-rooms-list"></div>
-    </div>
+    </div> -->
 </div>
 
 <script>
-    // These variables will be initialized by the Firebase script in the head
-    let app, db, auth, userId, isAuthReady;
-    
     // UI elements
     const chatbox = document.getElementById('chatbox');
     const chatInput = document.getElementById('chat-input');
@@ -195,75 +177,86 @@
     const statusMessage = document.getElementById('status-message');
     const imageInput = document.getElementById('image-input');
     const uploadImageButton = document.getElementById('upload-image-button');
-    const activeRoomsList = document.getElementById('active-rooms-list');
-    const refreshRoomsButton = document.getElementById('refresh-rooms-button');
     const onlineUsersList = document.getElementById('online-users-list');
     const chatTitle = document.getElementById('chat-title');
-
-    // App state
-    let localUsername = localStorage.getItem('username') || '';
-    let roomName;
-    const dmHistory = {};
-    let currentChatTarget = 'room'; // 'room' or a user's peerId
-
-    // Set initial username if it exists in local storage
-    if (localUsername) {
-        usernameInput.value = localUsername;
-    }
-
+    
     // --- Core App Functions ---
 
-    // Initializes the chat and user presence listeners for the room
-    function initializeRoomListeners() {
+    function joinRoom() {
         if (!isAuthReady) {
-            console.error("Firebase auth not ready.");
+            console.error("Authentication not ready.");
             return;
         }
 
-        // Firestore collection paths
-        const roomMessagesRef = collection(db, `artifacts/${appId}/public/data/rooms/${roomName}/messages`);
-        const onlineUsersRef = collection(db, `artifacts/${appId}/public/data/rooms/${roomName}/onlineUsers`);
+        // Close any existing WebSocket connection before creating a new one
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.close();
+        }
 
-        // Real-time chat messages listener
-        onSnapshot(roomMessagesRef, (snapshot) => {
-            snapshot.docChanges().forEach(change => {
-                const msg = change.doc.data();
-                if (change.type === 'added') {
-                    if (currentChatTarget === 'room') {
-                        const isMyMessage = msg.senderId === userId;
-                        if (msg.type === 'text') {
-                            addMessageToChat(isMyMessage ? 'You' : msg.sender, msg.text, isMyMessage);
-                        } else if (msg.type === 'image') {
-                            addImageToChat(isMyMessage ? 'You' : msg.sender, msg.image, isMyMessage);
-                        }
+        ws = new WebSocket(wssUrl);
+
+        ws.onopen = () => {
+            console.log('WebSocket connected.');
+            statusMessage.textContent = 'Connected to WSS server. Ready to chat.';
+            joinButton.disabled = true;
+
+            // Send a "join" message to the server
+            const joinMessage = {
+                type: 'join',
+                room: roomName,
+                userId: userId,
+                username: localUsername
+            };
+            ws.send(JSON.stringify(joinMessage));
+        };
+
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            console.log('Received:', data);
+            
+            switch (data.type) {
+                case 'message':
+                    // A new message from the server
+                    const isMyMessage = data.userId === userId;
+                    if (data.messageType === 'text') {
+                        addMessageToChat(isMyMessage ? 'You' : data.username, data.content, isMyMessage);
+                    } else if (data.messageType === 'image') {
+                        addImageToChat(isMyMessage ? 'You' : data.username, data.content, isMyMessage);
                     }
-                }
-            });
-        });
-
-        // Real-time online users listener with a "heartbeat"
-        let userHeartbeatInterval = setInterval(() => {
-            if (isAuthReady) {
-                const userDocRef = doc(db, `artifacts/${appId}/public/data/rooms/${roomName}/onlineUsers`, userId);
-                setDoc(userDocRef, { username: localUsername, lastSeen: serverTimestamp() }, { merge: true });
+                    break;
+                case 'users':
+                    // An update to the list of online users
+                    displayOnlineUsers(data.users);
+                    break;
+                case 'history':
+                    // Initial message history from the server
+                    chatbox.innerHTML = '';
+                    data.messages.forEach(msg => {
+                        const isMyMessage = msg.userId === userId;
+                        if (msg.messageType === 'text') {
+                            addMessageToChat(isMyMessage ? 'You' : msg.username, msg.content, isMyMessage);
+                        } else if (msg.messageType === 'image') {
+                            addImageToChat(isMyMessage ? 'You' : msg.username, msg.content, isMyMessage);
+                        }
+                    });
+                    break;
+                default:
+                    console.warn('Unknown message type:', data.type);
             }
-        }, 10000); // Update every 10 seconds
+        };
 
-        onSnapshot(onlineUsersRef, (snapshot) => {
-            const users = {};
-            snapshot.docs.forEach(doc => {
-                const userData = doc.data();
-                const now = Date.now();
-                const lastSeen = userData.lastSeen ? userData.lastSeen.toDate().getTime() : now;
-                // Consider users online if they've been seen in the last 15 seconds
-                if (now - lastSeen < 15000) {
-                    users[doc.id] = userData;
-                }
-            });
-            displayOnlineUsers(users);
-        });
+        ws.onclose = () => {
+            console.log('WebSocket connection closed.');
+            statusMessage.textContent = 'Connection to server lost. Please refresh or try again.';
+            joinButton.disabled = false;
+        };
+
+        ws.onerror = (error) => {
+            console.error('WebSocket error:', error);
+            statusMessage.textContent = 'An error occurred with the connection. Check the console for details.';
+        };
     }
-
+    
     // --- Event Handlers ---
 
     joinButton.onclick = () => {
@@ -271,87 +264,29 @@
         roomName = roomInput.value.trim();
         if (localUsername && roomName) {
             localStorage.setItem('username', localUsername);
-            joinButton.disabled = true;
             statusMessage.textContent = `Joining room '${roomName}' as '${localUsername}'...`;
             joinRoom();
+            chatTitle.textContent = `Room Chat: ${roomName}`;
         } else {
             alert('Please enter a valid username and room name.');
         }
     };
-
-    refreshRoomsButton.onclick = async () => {
-        const roomsRef = collection(db, `artifacts/${appId}/public/data/rooms`);
-        const querySnapshot = await getDocs(roomsRef);
-        const rooms = {};
-        for (const doc of querySnapshot.docs) {
-            const onlineUsersRef = collection(db, `artifacts/${appId}/public/data/rooms/${doc.id}/onlineUsers`);
-            const usersSnapshot = await getDocs(onlineUsersRef);
-            const activeUsers = [];
-            usersSnapshot.forEach(userDoc => {
-                const userData = userDoc.data();
-                const now = Date.now();
-                const lastSeen = userData.lastSeen ? userData.lastSeen.toDate().getTime() : now;
-                if (now - lastSeen < 15000) {
-                    activeUsers.push(userData.username);
-                }
-            });
-            if (activeUsers.length > 0) {
-                rooms[doc.id] = { count: activeUsers.length, users: activeUsers };
-            }
-        }
-        displayActiveRooms(rooms);
-    };
-
-    function joinRoom() {
-        if (!isAuthReady) {
-            console.error("Firebase auth not ready, waiting...");
-            return;
-        }
-        initializeRoomListeners();
-    }
     
-    chatInputForm.addEventListener('submit', async (e) => {
+    chatInputForm.addEventListener('submit', (e) => {
         e.preventDefault();
         const message = chatInput.value.trim();
-        if (message === '') return;
+        if (message === '' || ws.readyState !== WebSocket.OPEN) return;
 
-        try {
-            if (currentChatTarget === 'room') {
-                const roomMessagesRef = collection(db, `artifacts/${appId}/public/data/rooms/${roomName}/messages`);
-                await addDoc(roomMessagesRef, {
-                    type: 'text',
-                    sender: localUsername,
-                    senderId: userId,
-                    text: message,
-                    timestamp: serverTimestamp()
-                });
-            } else {
-                // For DMs, we store the chat history in a sub-collection on both users' documents
-                const targetId = currentChatTarget;
-                const dmMessage = {
-                    type: 'text',
-                    sender: localUsername,
-                    senderId: userId,
-                    text: message,
-                    timestamp: serverTimestamp(),
-                    recipientId: targetId
-                };
-
-                const myDmRef = collection(db, `artifacts/${appId}/public/data/rooms/${roomName}/onlineUsers/${userId}/dms`);
-                await addDoc(myDmRef, dmMessage);
-                
-                const theirDmRef = collection(db, `artifacts/${appId}/public/data/rooms/${roomName}/onlineUsers/${targetId}/dms`);
-                await addDoc(theirDmRef, dmMessage);
-
-                // Add to local history for immediate display
-                if (!dmHistory[targetId]) dmHistory[targetId] = [];
-                dmHistory[targetId].push(dmMessage);
-                addMessageToChat('You', message, true);
-            }
-            chatInput.value = '';
-        } catch (e) {
-            console.error("Error sending message:", e);
-        }
+        const chatMessage = {
+            type: 'message',
+            room: roomName,
+            userId: userId,
+            username: localUsername,
+            messageType: 'text',
+            content: message
+        };
+        ws.send(JSON.stringify(chatMessage));
+        chatInput.value = '';
     });
 
     uploadImageButton.onclick = () => { imageInput.click(); };
@@ -360,47 +295,22 @@
         const file = event.target.files[0];
         if (file && file.type.startsWith('image/')) {
             const reader = new FileReader();
-            reader.onload = async (e) => {
+            reader.onload = (e) => {
                 const imageData = e.target.result;
-                try {
-                    if (currentChatTarget === 'room') {
-                        const roomMessagesRef = collection(db, `artifacts/${appId}/public/data/rooms/${roomName}/messages`);
-                        await addDoc(roomMessagesRef, {
-                            type: 'image',
-                            sender: localUsername,
-                            senderId: userId,
-                            image: imageData,
-                            timestamp: serverTimestamp()
-                        });
-                    } else {
-                        const targetId = currentChatTarget;
-                        const dmImage = {
-                            type: 'image',
-                            sender: localUsername,
-                            senderId: userId,
-                            image: imageData,
-                            timestamp: serverTimestamp(),
-                            recipientId: targetId
-                        };
-                        const myDmRef = collection(db, `artifacts/${appId}/public/data/rooms/${roomName}/onlineUsers/${userId}/dms`);
-                        await addDoc(myDmRef, dmImage);
-                        
-                        const theirDmRef = collection(db, `artifacts/${appId}/public/data/rooms/${roomName}/onlineUsers/${targetId}/dms`);
-                        await addDoc(theirDmRef, dmImage);
-                        
-                        if (!dmHistory[targetId]) dmHistory[targetId] = [];
-                        dmHistory[targetId].push(dmImage);
-                        addImageToChat('You', imageData, true);
-                    }
-                } catch (e) {
-                    console.error("Error sending image:", e);
-                }
+                const imageMessage = {
+                    type: 'message',
+                    room: roomName,
+                    userId: userId,
+                    username: localUsername,
+                    messageType: 'image',
+                    content: imageData
+                };
+                ws.send(JSON.stringify(imageMessage));
             };
             reader.readAsDataURL(file);
         }
         imageInput.value = '';
     };
-
 
     // --- UI Helper Functions ---
 
@@ -439,94 +349,16 @@
         chatbox.scrollTop = chatbox.scrollHeight;
     }
 
-    async function displayOnlineUsers(users) {
+    function displayOnlineUsers(users) {
         onlineUsersList.innerHTML = '';
-
-        // Add "Room Chat" to the user list
-        const roomChatListItem = document.createElement('li');
-        roomChatListItem.textContent = `Room: ${roomName}`;
-        roomChatListItem.classList.add('p-2', 'hover:bg-gray-100', 'cursor-pointer', 'rounded');
-        if (currentChatTarget === 'room') {
-            roomChatListItem.classList.add('active-chat');
-        }
-        roomChatListItem.onclick = async () => {
-            currentChatTarget = 'room';
-            chatTitle.textContent = `Room Chat: ${roomName}`;
-            chatbox.innerHTML = '';
-
-            // Load room history from Firestore
-            const roomMessagesRef = collection(db, `artifacts/${appId}/public/data/rooms/${roomName}/messages`);
-            const q = query(roomMessagesRef, orderBy('timestamp'));
-            const querySnapshot = await getDocs(q);
-            querySnapshot.forEach((doc) => {
-                const msg = doc.data();
-                const isMyMessage = msg.senderId === userId;
-                if (msg.type === 'text') {
-                    addMessageToChat(isMyMessage ? 'You' : msg.sender, msg.text, isMyMessage);
-                } else if (msg.type === 'image') {
-                    addImageToChat(isMyMessage ? 'You' : msg.sender, msg.image, isMyMessage);
-                }
-            });
-        };
-        onlineUsersList.appendChild(roomChatListItem);
-
-        for (const peerId in users) {
-            if (peerId !== userId) {
-                const user = users[peerId];
+        if (users && users.length > 0) {
+            users.forEach(user => {
                 const listItem = document.createElement('li');
                 listItem.textContent = user.username;
                 listItem.classList.add('p-2', 'hover:bg-gray-100', 'cursor-pointer', 'rounded');
-                if (currentChatTarget === peerId) {
-                    listItem.classList.add('active-chat');
-                }
-                listItem.onclick = async () => {
-                    currentChatTarget = peerId;
-                    chatTitle.textContent = `DM with ${user.username}`;
-                    chatbox.innerHTML = '';
-                    
-                    // Load DM history from Firestore
-                    const dmRef = collection(db, `artifacts/${appId}/public/data/rooms/${roomName}/onlineUsers/${userId}/dms`);
-                    const q = query(dmRef, where('recipientId', 'in', [peerId, userId]), where('senderId', 'in', [peerId, userId]), orderBy('timestamp'));
-                    const querySnapshot = await getDocs(q);
-                    querySnapshot.forEach(doc => {
-                        const msg = doc.data();
-                        const isMyMessage = msg.senderId === userId;
-                        if (msg.type === 'text') {
-                            addMessageToChat(isMyMessage ? 'You' : msg.sender, msg.text, isMyMessage);
-                        } else if (msg.type === 'image') {
-                            addImageToChat(isMyMessage ? 'You' : msg.sender, msg.image, isMyMessage);
-                        }
-                    });
-                };
                 onlineUsersList.appendChild(listItem);
-            }
-        }
-    }
-
-    async function displayActiveRooms(rooms) {
-        activeRoomsList.innerHTML = '';
-        if (Object.keys(rooms).length === 0) {
-            activeRoomsList.innerHTML = '<p>No active rooms found.</p>';
-            return;
-        }
-
-        const roomListElement = document.createElement('ul');
-        for (const roomName in rooms) {
-            const roomData = rooms[roomName];
-            const listItem = document.createElement('li');
-            listItem.textContent = `Room: ${roomName} | Active Users: ${roomData.count}`;
-            
-            const userList = document.createElement('ul');
-            roomData.users.forEach(user => {
-                const userItem = document.createElement('li');
-                userItem.textContent = user;
-                userList.appendChild(userItem);
             });
-            listItem.appendChild(userList);
-
-            roomListElement.appendChild(listItem);
         }
-        activeRoomsList.appendChild(roomListElement);
     }
     
 </script>
