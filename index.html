@@ -194,44 +194,27 @@
         this.textContent = type === 'password' ? 'Show' : 'Hide';
     });
 
-    loginButton.onclick = async () => {
-        const username = authUsernameInput.value.trim();
-        const password = authPasswordInput.value.trim();
-        if (username && password) {
-            authStatus.textContent = 'Logging in...';
-            try {
-                const { data, error } = await supabase.auth.signInWithPassword({
-                    email: `${username}@harmony-chat.com`,
-                    password: password,
-                });
-                if (error) throw error;
-                
-                const { data: userProfile, error: profileError } = await supabase
-                    .from('users')
-                    .select('username')
-                    .eq('user_id', data.user.id)
-                    .single();
-                
-                if (profileError || !userProfile) {
-                    authStatus.textContent = 'User profile not found. Please register.';
-                    await supabase.auth.signOut();
-                } else {
-                    localUsername = userProfile.username;
-                    userId = data.user.id;
-                    userIdDisplay.textContent = userId;
-                    authSection.style.display = 'none';
-                    mainApp.style.display = 'flex';
-                    statusMessage.textContent = `Hello, ${localUsername}! Enter a room name and click Join.`;
-                    initApp();
-                }
-            } catch (error) {
-                console.error("Login error:", error);
-                authStatus.textContent = `Login failed: ${error.message}`;
-            }
-        } else {
-            authStatus.textContent = 'Please enter both username and password.';
+loginButton.onclick = async () => {
+    const username = authUsernameInput.value.trim();
+    const password = authPasswordInput.value.trim();
+    if (username && password) {
+        authStatus.textContent = 'Logging in...';
+        try {
+            const { data, error } = await supabase.functions.invoke('login_with_username', {
+                body: { username, password },
+                headers: { 'Content-Type': 'application/json' }
+            });
+            if (error) throw error;
+            // Handle successful login with the returned token
+            // ...
+        } catch (error) {
+            console.error("Login error:", error);
+            authStatus.textContent = `Login failed: ${error.message}`;
         }
-    };
+    } else {
+        authStatus.textContent = 'Please enter both username and password.';
+    }
+};
 
     registerButton.onclick = async () => {
         const username = authUsernameInput.value.trim();
@@ -795,3 +778,4 @@
 </script>
 </body>
 </html>
+
