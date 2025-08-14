@@ -427,6 +427,29 @@
             color: var(--white-text);
             cursor: pointer;
         }
+
+        /* New styles for server settings */
+        #server-settings-modal .modal-content {
+            max-width: 400px;
+        }
+        #server-settings-form {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        #server-settings-form input[type="text"],
+        #server-settings-form input[type="file"] {
+            padding: 8px;
+            background-color: var(--tertiary-bg);
+            border: 1px solid #4a4a4a;
+            color: var(--white-text);
+            border-radius: 5px;
+        }
+        #server-settings-form label {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
     </style>
 </head>
 <body>
@@ -449,6 +472,7 @@
         <div class="server-icon" id="direct-messages-icon" title="Direct Messages">DMs</div>
         <div class="separator" style="height: 2px; background-color: #4a4a4a; margin: 10px 0;"></div>
         <h3 class="server-list-header">Servers</h3>
+        <div class="server-icon" id="discover-servers-icon" title="Discover servers">🌐</div>
         <div class="server-icon" id="join-server-icon" title="Join a server">🔗</div>
         <div class="server-icon" id="add-server-icon" title="Add a server">+</div>
         <div class="user-panel" id="user-panel">
@@ -464,6 +488,7 @@
                 <h3>Text Channels</h3>
                 <div style="display: flex; gap: 5px;">
                     <button id="get-invite-button" style="display:none; color: var(--light-grey-text); font-size: 1rem;">Invite</button>
+                    <button id="server-settings-button" style="display:none; color: var(--light-grey-text); font-size: 1rem;">Settings</button>
                     <button id="add-channel-button">+</button>
                 </div>
             </div>
@@ -524,6 +549,35 @@
     </div>
 </div>
 
+<div id="server-settings-modal" class="modal">
+    <div class="modal-content">
+        <span class="close-button" id="close-server-settings-modal">&times;</span>
+        <h2>Server Settings</h2>
+        <div id="settings-content">
+            <form id="server-settings-form">
+                <label for="server-name-input">Server Name:</label>
+                <input type="text" id="server-name-input">
+                <label for="server-icon-input">Server Icon:</label>
+                <input type="file" id="server-icon-input" accept="image/*">
+                <label for="is-public-checkbox">
+                    <input type="checkbox" id="is-public-checkbox">
+                    Make Public
+                </label>
+                <button type="submit">Save Changes</button>
+            </form>
+        </div>
+        <p id="server-settings-status"></p>
+    </div>
+</div>
+
+<div id="discover-servers-modal" class="modal">
+    <div class="modal-content">
+        <span class="close-button" id="close-discover-modal">&times;</span>
+        <h2>Discover Public Servers</h2>
+        <div id="public-servers-list"></div>
+    </div>
+</div>
+
 <script type="module">
     import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.7/+esm';
 
@@ -553,8 +607,10 @@
     const addServerIcon = document.getElementById('add-server-icon');
     const joinServerIcon = document.getElementById('join-server-icon');
     const directMessagesIcon = document.getElementById('direct-messages-icon');
+    const discoverServersIcon = document.getElementById('discover-servers-icon');
     const channelListHeader = document.getElementById('channel-list-header');
     const getInviteButton = document.getElementById('get-invite-button');
+    const serverSettingsButton = document.getElementById('server-settings-button');
     const userPanel = document.getElementById('user-panel');
     const myAvatar = document.getElementById('my-avatar');
     const myDisplayName = document.getElementById('my-display-name');
@@ -571,6 +627,16 @@
     const profileDisplayName = document.getElementById('profile-display-name');
     const profileUsername = document.getElementById('profile-username');
     const profileActions = document.getElementById('profile-actions');
+    const serverSettingsModal = document.getElementById('server-settings-modal');
+    const closeServerSettingsModal = document.getElementById('close-server-settings-modal');
+    const serverNameInput = document.getElementById('server-name-input');
+    const serverIconInput = document.getElementById('server-icon-input');
+    const isPublicCheckbox = document.getElementById('is-public-checkbox');
+    const serverSettingsForm = document.getElementById('server-settings-form');
+    const serverSettingsStatus = document.getElementById('server-settings-status');
+    const discoverServersModal = document.getElementById('discover-servers-modal');
+    const closeDiscoverModal = document.getElementById('close-discover-modal');
+    const publicServersList = document.getElementById('public-servers-list');
 
     let localUsername;
     let localDisplayName;
@@ -690,7 +756,7 @@
                 }
             }
         };
-
+        
         joinServerIcon.onclick = async () => {
             const inviteCode = prompt("Enter a server invite code:");
             if (inviteCode) {
@@ -720,6 +786,45 @@
                 await supabase.from('server_members').insert({ user_id: userId, server_id: server.id });
                 loadServers();
             }
+        };
+
+        discoverServersIcon.onclick = async () => {
+            const { data: publicServers, error } = await supabase
+                .from('servers')
+                .select('*')
+                .eq('is_public', true);
+            
+            if (error) {
+                console.error("Error fetching public servers:", error);
+                return;
+            }
+
+            publicServersList.innerHTML = '';
+            publicServers.forEach(server => {
+                const serverElement = document.createElement('div');
+                serverElement.style.cssText = 'display:flex; align-items:center; gap:10px; padding:10px; border-bottom:1px solid #4a4a4a;';
+                serverElement.innerHTML = `
+                    <div class="server-icon" style="width:40px; height:40px;">
+                        ${server.icon_url ? `<img src="${server.icon_url}" alt="${server.room_name.substring(0, 2).toUpperCase()}">` : server.room_name.substring(0, 2).toUpperCase()}
+                    </div>
+                    <span>${server.room_name}</span>
+                `;
+                const joinButton = document.createElement('button');
+                joinButton.textContent = 'Join';
+                joinButton.onclick = async () => {
+                    await supabase.from('server_members').insert({ user_id: userId, server_id: server.id });
+                    loadServers();
+                    discoverServersModal.style.display = 'none';
+                };
+                serverElement.appendChild(joinButton);
+                publicServersList.appendChild(serverElement);
+            });
+
+            discoverServersModal.style.display = 'block';
+        };
+
+        closeDiscoverModal.onclick = () => {
+            discoverServersModal.style.display = 'none';
         };
         
         getInviteButton.onclick = async () => {
@@ -770,12 +875,24 @@
             userProfileModal.style.display = 'none';
         };
 
+        closeServerSettingsModal.onclick = () => {
+            serverSettingsModal.style.display = 'none';
+        };
+
+        serverSettingsButton.onclick = () => showServerSettings();
+        
         window.onclick = (event) => {
             if (event.target == userSettingsModal) {
                 userSettingsModal.style.display = 'none';
             }
             if (event.target == userProfileModal) {
                 userProfileModal.style.display = 'none';
+            }
+            if (event.target == serverSettingsModal) {
+                serverSettingsModal.style.display = 'none';
+            }
+            if (event.target == discoverServersModal) {
+                discoverServersModal.style.display = 'none';
             }
         };
 
@@ -825,6 +942,49 @@
                 setTimeout(() => {
                     userSettingsModal.style.display = 'none';
                     settingsStatus.textContent = '';
+                }, 1500);
+            }
+        };
+
+        serverSettingsForm.onsubmit = async (e) => {
+            e.preventDefault();
+            serverSettingsStatus.textContent = 'Saving changes...';
+            
+            let newIconUrl = '';
+            if (serverIconInput.files.length > 0) {
+                const file = serverIconInput.files[0];
+                const { data, error } = await supabase.storage.from('server_icons').upload(`${currentServerId}/${file.name}`, file, {
+                    cacheControl: '3600',
+                    upsert: true
+                });
+                if (error) {
+                    console.error('Error uploading icon:', error);
+                    serverSettingsStatus.textContent = 'Error uploading icon.';
+                    return;
+                }
+                const { publicUrl } = supabase.storage.from('server_icons').getPublicUrl(data.path);
+                newIconUrl = publicUrl;
+            }
+
+            const { error } = await supabase
+                .from('servers')
+                .update({
+                    room_name: serverNameInput.value,
+                    icon_url: newIconUrl || null,
+                    is_public: isPublicCheckbox.checked,
+                })
+                .eq('id', currentServerId)
+                .eq('owner_id', userId);
+
+            if (error) {
+                console.error('Error saving settings:', error);
+                serverSettingsStatus.textContent = 'Error saving changes. You might not be the owner.';
+            } else {
+                serverSettingsStatus.textContent = 'Changes saved successfully!';
+                loadServers(); // Reload servers to show new name/icon
+                setTimeout(() => {
+                    serverSettingsModal.style.display = 'none';
+                    serverSettingsStatus.textContent = '';
                 }, 1500);
             }
         };
@@ -916,6 +1076,28 @@
         settingsDmAccess.value = localDmAccess;
         userSettingsModal.style.display = 'block';
     }
+
+    async function showServerSettings() {
+        if (!currentServerId || currentServerId === 'direct-messages') {
+            alert('Please select a server first.');
+            return;
+        }
+        
+        const { data, error } = await supabase
+            .from('servers')
+            .select('owner_id, room_name, is_public')
+            .eq('id', currentServerId)
+            .single();
+
+        if (error || !data || data.owner_id !== userId) {
+            alert('You do not have permission to change these settings.');
+            return;
+        }
+
+        serverNameInput.value = data.room_name;
+        isPublicCheckbox.checked = data.is_public;
+        serverSettingsModal.style.display = 'block';
+    }
     
     async function showUserProfile(targetUserId, targetDisplayName, targetProfilePictureUrl, targetUsername) {
         activeProfileUserId = targetUserId;
@@ -984,6 +1166,7 @@
                 <div class="server-icon" id="direct-messages-icon" title="Direct Messages">DMs</div>
                 <div class="separator" style="height: 2px; background-color: #4a4a4a; margin: 10px 0;"></div>
                 <h3 class="server-list-header">Servers</h3>
+                <div class="server-icon" id="discover-servers-icon" title="Discover servers">🌐</div>
                 <div class="server-icon" id="join-server-icon" title="Join a server">🔗</div>
                 <div class="server-icon" id="add-server-icon" title="Add a server">+</div>
                 <div class="user-panel" id="user-panel">
@@ -993,6 +1176,7 @@
             `;
             
             document.getElementById('direct-messages-icon').onclick = () => joinServer('direct-messages', 'Direct Messages');
+            document.getElementById('discover-servers-icon').onclick = discoverServersIcon.onclick;
             document.getElementById('join-server-icon').onclick = joinServerIcon.onclick;
             document.getElementById('add-server-icon').onclick = addServerIcon.onclick;
             document.getElementById('user-panel').onclick = showUserSettings;
@@ -1013,7 +1197,7 @@
 
         const serverHtml = servers.map(server => `
             <div class="server-icon" data-server-id="${server.id}" data-server-name="${server.room_name}" title="${server.room_name}">
-                ${server.image_url ? `<img src="${server.image_url}" alt="${server.room_name.substring(0, 2).toUpperCase()}">` : server.room_name.substring(0, 2).toUpperCase()}
+                ${server.icon_url ? `<img src="${server.icon_url}" alt="${server.room_name.substring(0, 2).toUpperCase()}">` : server.room_name.substring(0, 2).toUpperCase()}
             </div>
         `).join('');
 
@@ -1021,6 +1205,7 @@
             <div class="server-icon" id="direct-messages-icon" title="Direct Messages">DMs</div>
             <div class="separator" style="height: 2px; background-color: #4a4a4a; margin: 10px 0;"></div>
             <h3 class="server-list-header">Servers</h3>
+            <div class="server-icon" id="discover-servers-icon" title="Discover servers">🌐</div>
             <div class="server-icon" id="join-server-icon" title="Join a server">🔗</div>
             ${serverHtml}
             <div class="server-icon" id="add-server-icon" title="Add a server">+</div>
@@ -1033,6 +1218,7 @@
         document.getElementById('direct-messages-icon').onclick = () => joinServer('direct-messages', 'Direct Messages');
         document.getElementById('add-server-icon').onclick = addServerIcon.onclick;
         document.getElementById('join-server-icon').onclick = joinServerIcon.onclick;
+        document.getElementById('discover-servers-icon').onclick = discoverServersIcon.onclick;
         document.getElementById('user-panel').onclick = showUserSettings;
         updateUserPanel();
 
@@ -1058,10 +1244,18 @@
         if (serverId === 'direct-messages') {
             channelListHeader.style.display = 'none';
             getInviteButton.style.display = 'none';
+            serverSettingsButton.style.display = 'none';
             loadUsersForDMs();
         } else {
             channelListHeader.style.display = 'flex';
             getInviteButton.style.display = 'block';
+
+            const { data: server, error: serverError } = await supabase.from('servers').select('owner_id').eq('id', serverId).single();
+            if (server && server.owner_id === userId) {
+                serverSettingsButton.style.display = 'block';
+            } else {
+                serverSettingsButton.style.display = 'none';
+            }
 
             const { data: channels, error } = await supabase
                 .from('channels')
