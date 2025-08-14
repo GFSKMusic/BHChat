@@ -67,6 +67,7 @@
             flex-direction: column;
             gap: 8px;
             overflow-y: auto;
+            position: relative;
         }
 
         .server-icon {
@@ -83,9 +84,10 @@
             color: var(--light-grey-text);
             transition: border-radius 0.2s, background-color 0.2s;
             position: relative;
+            margin-bottom: 5px;
         }
 
-        .server-icon img {
+        .server-icon img, .user-avatar img {
             width: 100%;
             height: 100%;
             object-fit: cover;
@@ -163,6 +165,13 @@
             align-items: center;
             gap: 8px;
         }
+        
+        .user-list-item .user-avatar {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background-color: var(--tertiary-bg);
+        }
 
         .channel-list-item:hover, .user-list-item:hover {
             background-color: var(--tertiary-bg);
@@ -232,6 +241,35 @@
 
         .message-wrapper {
             position: relative;
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+        }
+        
+        .message-wrapper.my-message {
+            align-self: flex-end;
+            flex-direction: row-reverse;
+        }
+
+        .message-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background-color: var(--tertiary-bg);
+            flex-shrink: 0;
+            cursor: pointer;
+        }
+        
+        .message-avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 50%;
+        }
+
+        .message-content-container {
+            display: flex;
+            flex-direction: column;
         }
 
         .message {
@@ -242,22 +280,22 @@
             word-wrap: break-word;
             position: relative;
         }
-
-        .message.my-message {
+        
+        .message-wrapper.my-message .message {
             background-color: var(--accent-blue);
-            align-self: flex-end;
         }
 
         .message-sender {
             font-size: 0.8em;
             color: var(--light-grey-text);
+            margin-bottom: 2px;
         }
 
-        .message.my-message .message-sender {
+        .message-wrapper.my-message .message-sender {
             display: none;
         }
 
-        .message-content {
+        .message-text {
             margin-top: 5px;
         }
 
@@ -291,6 +329,104 @@
             text-align: center;
             margin-bottom: 5px;
         }
+        
+        .user-panel {
+            margin-top: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            padding-top: 10px;
+            border-top: 1px solid #4a4a4a;
+            cursor: pointer;
+            text-align: center;
+        }
+        
+        .user-panel .user-avatar {
+            width: 48px;
+            height: 48px;
+            background-color: var(--tertiary-bg);
+            border-radius: 50%;
+            align-self: center;
+        }
+        
+        .user-panel .display-name {
+            font-size: 0.9em;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0, 0, 0, 0.7);
+            padding-top: 60px;
+        }
+
+        .modal-content {
+            background-color: var(--secondary-bg);
+            margin: 5% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 80%;
+            max-width: 500px;
+            border-radius: 8px;
+        }
+        
+        .modal-content.user-profile {
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        .modal-content.user-profile .profile-avatar {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            background-color: var(--tertiary-bg);
+            margin-bottom: 10px;
+        }
+        
+        .modal-content.user-profile .profile-avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 50%;
+        }
+
+        .close-button {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+        }
+
+        .close-button:hover,
+        .close-button:focus {
+            color: var(--white-text);
+            text-decoration: none;
+            cursor: pointer;
+        }
+        
+        .modal-actions {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+        }
+
+        .modal-actions button {
+            padding: 10px 20px;
+            border-radius: 5px;
+            border: none;
+            background-color: var(--accent-blue);
+            color: var(--white-text);
+            cursor: pointer;
+        }
     </style>
 </head>
 <body>
@@ -298,6 +434,7 @@
 <div id="auth-section">
     <h2>Welcome to Harmony</h2>
     <input type="text" id="auth-username" placeholder="Enter username">
+    <input type="text" id="auth-displayname" placeholder="Enter display name (optional)">
     <div class="password-container">
         <input type="password" id="auth-password" placeholder="Enter password">
         <span id="toggle-password">Show</span>
@@ -312,7 +449,12 @@
         <div class="server-icon" id="direct-messages-icon" title="Direct Messages">DMs</div>
         <div class="separator" style="height: 2px; background-color: #4a4a4a; margin: 10px 0;"></div>
         <h3 class="server-list-header">Servers</h3>
+        <div class="server-icon" id="join-server-icon" title="Join a server">🔗</div>
         <div class="server-icon" id="add-server-icon" title="Add a server">+</div>
+        <div class="user-panel" id="user-panel">
+            <div class="user-avatar" id="my-avatar"></div>
+            <div class="display-name" id="my-display-name"></div>
+        </div>
     </div>
     
     <div class="main-content">
@@ -320,7 +462,10 @@
             <h2 id="server-name-header" class="server-name-header"></h2>
             <div class="channel-list-header" id="channel-list-header">
                 <h3>Text Channels</h3>
-                <button id="add-channel-button">+</button>
+                <div style="display: flex; gap: 5px;">
+                    <button id="get-invite-button" style="display:none; color: var(--light-grey-text); font-size: 1rem;">Invite</button>
+                    <button id="add-channel-button">+</button>
+                </div>
             </div>
             <div id="channel-list"></div>
         </div>
@@ -343,6 +488,42 @@
     </div>
 </div>
 
+<div id="user-settings-modal" class="modal">
+    <div class="modal-content">
+        <span class="close-button" id="close-settings-modal">&times;</span>
+        <h2>User Settings</h2>
+        <form id="user-settings-form">
+            <label for="settings-display-name">Display Name:</label>
+            <input type="text" id="settings-display-name" placeholder="Enter new display name">
+            
+            <label for="settings-profile-picture">Profile Picture:</label>
+            <input type="file" id="settings-profile-picture" accept="image/*">
+            
+            <label for="settings-dm-access">Direct Message Access:</label>
+            <select id="settings-dm-access">
+                <option value="friends">Friends Only</option>
+                <option value="everyone">Everyone</option>
+            </select>
+
+            <button type="submit">Save Changes</button>
+        </form>
+        <p id="settings-status"></p>
+    </div>
+</div>
+
+<div id="user-profile-modal" class="modal">
+    <div class="modal-content user-profile">
+        <span class="close-button" id="close-profile-modal">&times;</span>
+        <div class="profile-avatar" id="profile-avatar"></div>
+        <h3 id="profile-display-name"></h3>
+        <p id="profile-username"></p>
+        <div class="modal-actions" id="profile-actions">
+            <button id="dm-button">DM</button>
+            <button id="friend-button">Add Friend</button>
+        </div>
+    </div>
+</div>
+
 <script type="module">
     import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.7/+esm';
 
@@ -353,6 +534,7 @@
     const authSection = document.getElementById('auth-section');
     const mainApp = document.getElementById('main-app');
     const authUsernameInput = document.getElementById('auth-username');
+    const authDisplaynameInput = document.getElementById('auth-displayname');
     const authPasswordInput = document.getElementById('auth-password');
     const loginButton = document.getElementById('login-button');
     const registerButton = document.getElementById('register-button');
@@ -369,14 +551,40 @@
     const uploadImageButton = document.getElementById('upload-image-button');
     const imageInput = document.getElementById('image-input');
     const addServerIcon = document.getElementById('add-server-icon');
+    const joinServerIcon = document.getElementById('join-server-icon');
     const directMessagesIcon = document.getElementById('direct-messages-icon');
     const channelListHeader = document.getElementById('channel-list-header');
+    const getInviteButton = document.getElementById('get-invite-button');
+    const userPanel = document.getElementById('user-panel');
+    const myAvatar = document.getElementById('my-avatar');
+    const myDisplayName = document.getElementById('my-display-name');
+    const userSettingsModal = document.getElementById('user-settings-modal');
+    const closeSettingsModal = document.getElementById('close-settings-modal');
+    const userSettingsForm = document.getElementById('user-settings-form');
+    const settingsDisplayNameInput = document.getElementById('settings-display-name');
+    const settingsProfilePictureInput = document.getElementById('settings-profile-picture');
+    const settingsDmAccess = document.getElementById('settings-dm-access');
+    const settingsStatus = document.getElementById('settings-status');
+    const userProfileModal = document.getElementById('user-profile-modal');
+    const closeProfileModal = document.getElementById('close-profile-modal');
+    const profileAvatar = document.getElementById('profile-avatar');
+    const profileDisplayName = document.getElementById('profile-display-name');
+    const profileUsername = document.getElementById('profile-username');
+    const profileActions = document.getElementById('profile-actions');
 
     let localUsername;
+    let localDisplayName;
+    let localProfilePictureUrl;
+    let localDmAccess;
     let userId;
     let currentServerId;
     let currentChatTarget = { type: '', id: '' };
     let chatSubscription;
+    let activeProfileUserId;
+
+    function generateInviteCode() {
+        return Math.random().toString(36).substring(2, 8).toUpperCase();
+    }
 
     function setupEventListeners() {
         togglePassword.addEventListener('click', function() {
@@ -399,7 +607,7 @@
                     
                     const { data: userProfile, error: profileError } = await supabase
                         .from('users')
-                        .select('username')
+                        .select('username, display_name, profile_picture_url, dm_access')
                         .eq('user_id', data.user.id)
                         .single();
                     
@@ -408,9 +616,13 @@
                         await supabase.auth.signOut();
                     } else {
                         localUsername = userProfile.username;
+                        localDisplayName = userProfile.display_name;
+                        localProfilePictureUrl = userProfile.profile_picture_url;
+                        localDmAccess = userProfile.dm_access;
                         userId = data.user.id;
                         authSection.style.display = 'none';
                         mainApp.style.display = 'flex';
+                        updateUserPanel();
                         loadServers();
                     }
                 } catch (error) {
@@ -418,12 +630,13 @@
                     authStatus.textContent = `Login failed: ${error.message}`;
                 }
             } else {
-                authStatus.textContent = 'Please enter both username and password.';
+                authStatus.textContent = 'Please enter username and password.';
             }
         };
     
         registerButton.onclick = async () => {
             const username = authUsernameInput.value.trim();
+            const displayName = authDisplaynameInput.value.trim() || username;
             const password = authPasswordInput.value.trim();
             if (username && password) {
                 authStatus.textContent = 'Registering user...';
@@ -446,7 +659,7 @@
                     });
                     if (error) throw error;
                     
-                    await supabase.from('users').insert([{ user_id: data.user.id, username }]);
+                    await supabase.from('users').insert([{ user_id: data.user.id, username: username, display_name: displayName }]);
                     
                     authStatus.textContent = 'Registration successful! Please log in.';
                 } catch (error) {
@@ -454,16 +667,17 @@
                     authStatus.textContent = `Registration failed: ${error.message}`;
                 }
             } else {
-                authStatus.textContent = 'Please enter both username and password.';
+                authStatus.textContent = 'Please enter a username and password.';
             }
         };
 
         addServerIcon.onclick = async () => {
             const newRoomName = prompt("Enter a new server name:");
             if (newRoomName) {
+                const inviteCode = generateInviteCode();
                 const { error, data } = await supabase
                     .from('servers')
-                    .insert({ room_name: newRoomName, owner_id: userId })
+                    .insert({ room_name: newRoomName, owner_id: userId, invite_code: inviteCode })
                     .select();
                 if (error) {
                     console.error("Error creating server:", error);
@@ -471,7 +685,52 @@
                 } else {
                     const newServer = data[0];
                     await supabase.from('channels').insert({ server_id: newServer.id, name: 'general' });
+                    await supabase.from('server_members').insert({ user_id: userId, server_id: newServer.id });
                     loadServers();
+                }
+            }
+        };
+
+        joinServerIcon.onclick = async () => {
+            const inviteCode = prompt("Enter a server invite code:");
+            if (inviteCode) {
+                const { data: server, error } = await supabase
+                    .from('servers')
+                    .select('id')
+                    .eq('invite_code', inviteCode)
+                    .single();
+                
+                if (error || !server) {
+                    alert("Invalid invite code.");
+                    return;
+                }
+
+                const { data: member, error: memberError } = await supabase
+                    .from('server_members')
+                    .select('*')
+                    .eq('user_id', userId)
+                    .eq('server_id', server.id)
+                    .single();
+                
+                if (member) {
+                    alert("You are already a member of this server.");
+                    return;
+                }
+
+                await supabase.from('server_members').insert({ user_id: userId, server_id: server.id });
+                loadServers();
+            }
+        };
+        
+        getInviteButton.onclick = async () => {
+            if (currentServerId && currentServerId !== 'direct-messages') {
+                const { data, error } = await supabase
+                    .from('servers')
+                    .select('invite_code')
+                    .eq('id', currentServerId)
+                    .single();
+                if (data) {
+                    prompt("Your invite code:", data.invite_code);
                 }
             }
         };
@@ -499,6 +758,77 @@
             joinServer('direct-messages', 'Direct Messages');
         };
         
+        userPanel.onclick = () => {
+            showUserSettings();
+        };
+
+        closeSettingsModal.onclick = () => {
+            userSettingsModal.style.display = 'none';
+        };
+        
+        closeProfileModal.onclick = () => {
+            userProfileModal.style.display = 'none';
+        };
+
+        window.onclick = (event) => {
+            if (event.target == userSettingsModal) {
+                userSettingsModal.style.display = 'none';
+            }
+            if (event.target == userProfileModal) {
+                userProfileModal.style.display = 'none';
+            }
+        };
+
+        userSettingsForm.onsubmit = async (e) => {
+            e.preventDefault();
+            settingsStatus.textContent = 'Saving...';
+            const newDisplayName = settingsDisplayNameInput.value.trim();
+            const newProfilePicture = settingsProfilePictureInput.files[0];
+            const newDmAccess = settingsDmAccess.value;
+
+            let profilePictureUrl = localProfilePictureUrl;
+
+            if (newProfilePicture) {
+                const { data, error } = await supabase.storage
+                    .from('profile_pictures')
+                    .upload(`${userId}/${newProfilePicture.name}`, newProfilePicture, {
+                        cacheControl: '3600',
+                        upsert: true
+                    });
+                if (error) {
+                    console.error("Error uploading profile picture:", error);
+                    settingsStatus.textContent = 'Error uploading picture.';
+                    return;
+                }
+                const publicUrl = supabase.storage.from('profile_pictures').getPublicUrl(data.path);
+                profilePictureUrl = publicUrl.data.publicUrl;
+            }
+            
+            const { error } = await supabase
+                .from('users')
+                .update({ 
+                    display_name: newDisplayName || localDisplayName, 
+                    profile_picture_url: profilePictureUrl,
+                    dm_access: newDmAccess
+                })
+                .eq('user_id', userId);
+            
+            if (error) {
+                console.error("Error updating user settings:", error);
+                settingsStatus.textContent = 'Error saving changes.';
+            } else {
+                localDisplayName = newDisplayName || localDisplayName;
+                localProfilePictureUrl = profilePictureUrl;
+                localDmAccess = newDmAccess;
+                updateUserPanel();
+                settingsStatus.textContent = 'Changes saved successfully!';
+                setTimeout(() => {
+                    userSettingsModal.style.display = 'none';
+                    settingsStatus.textContent = '';
+                }, 1500);
+            }
+        };
+        
         chatInputForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             const message = chatInput.value.trim();
@@ -507,7 +837,8 @@
                     await supabase.from('room_messages').insert({
                         channel_id: currentChatTarget.id,
                         sender_id: userId,
-                        sender_name: localUsername,
+                        sender_name: localDisplayName,
+                        sender_profile_picture_url: localProfilePictureUrl,
                         type: 'text',
                         content: message,
                     });
@@ -520,7 +851,8 @@
                     await supabase.from('dms').insert({
                         dm_path: dmPath,
                         sender_id: userId,
-                        sender_name: localUsername,
+                        sender_name: localDisplayName,
+                        sender_profile_picture_url: localProfilePictureUrl,
                         type: 'text',
                         content: message,
                     });
@@ -543,7 +875,8 @@
                         await supabase.from('room_messages').insert({
                             channel_id: currentChatTarget.id,
                             sender_id: userId,
-                            sender_name: localUsername,
+                            sender_name: localDisplayName,
+                            sender_profile_picture_url: localProfilePictureUrl,
                             type: 'image',
                             content: imageData,
                         });
@@ -556,7 +889,8 @@
                         await supabase.from('dms').insert({
                             dm_path: dmPath,
                             sender_id: userId,
-                            sender_name: localUsername,
+                            sender_name: localDisplayName,
+                            sender_profile_picture_url: localProfilePictureUrl,
                             type: 'image',
                             content: imageData,
                         });
@@ -568,10 +902,109 @@
         };
     }
 
+    function updateUserPanel() {
+        if (localProfilePictureUrl) {
+            myAvatar.innerHTML = `<img src="${localProfilePictureUrl}" alt="${localDisplayName}">`;
+        } else {
+            myAvatar.innerHTML = localDisplayName ? localDisplayName.substring(0, 2).toUpperCase() : '?';
+        }
+        myDisplayName.textContent = localDisplayName || localUsername;
+    }
+
+    function showUserSettings() {
+        settingsDisplayNameInput.value = localDisplayName;
+        settingsDmAccess.value = localDmAccess;
+        userSettingsModal.style.display = 'block';
+    }
+    
+    async function showUserProfile(targetUserId, targetDisplayName, targetProfilePictureUrl, targetUsername) {
+        activeProfileUserId = targetUserId;
+        profileDisplayName.textContent = targetDisplayName;
+        profileUsername.textContent = `@${targetUsername}`;
+        if (targetProfilePictureUrl) {
+            profileAvatar.innerHTML = `<img src="${targetProfilePictureUrl}" alt="${targetDisplayName}">`;
+        } else {
+            profileAvatar.textContent = targetDisplayName.substring(0, 2).toUpperCase();
+        }
+
+        const { data: isFriend, error } = await supabase
+            .from('friends')
+            .select('*')
+            .or(`and(user_id_1.eq.${userId},user_id_2.eq.${targetUserId}),and(user_id_1.eq.${targetUserId},user_id_2.eq.${userId})`);
+
+        const friendButton = document.getElementById('friend-button');
+        if (isFriend && isFriend.length > 0) {
+            friendButton.textContent = 'Remove Friend';
+            friendButton.onclick = () => removeFriend(targetUserId);
+        } else {
+            friendButton.textContent = 'Add Friend';
+            friendButton.onclick = () => addFriend(targetUserId);
+        }
+
+        document.getElementById('dm-button').onclick = () => {
+            userProfileModal.style.display = 'none';
+            startDM(targetUserId, targetDisplayName);
+        };
+        
+        userProfileModal.style.display = 'block';
+    }
+    
+    async function addFriend(targetUserId) {
+        await supabase.from('friends').insert({ user_id_1: userId, user_id_2: targetUserId });
+        alert(`${profileDisplayName.textContent} added as a friend!`);
+        userProfileModal.style.display = 'none';
+    }
+    
+    async function removeFriend(targetUserId) {
+        await supabase
+            .from('friends')
+            .delete()
+            .or(`and(user_id_1.eq.${userId},user_id_2.eq.${targetUserId}),and(user_id_1.eq.${targetUserId},user_id_2.eq.${userId})`);
+        alert(`${profileDisplayName.textContent} removed from friends.`);
+        userProfileModal.style.display = 'none';
+        if (currentChatTarget.type === 'dm') {
+            joinServer('direct-messages', 'Direct Messages');
+        }
+    }
+
     async function loadServers() {
+        const { data: memberServers, error: memberError } = await supabase
+            .from('server_members')
+            .select('server_id')
+            .eq('user_id', userId);
+
+        if (memberError) {
+            console.error("Error fetching member servers:", memberError);
+            return;
+        }
+
+        const serverIds = memberServers.map(m => m.server_id);
+        if (serverIds.length === 0) {
+            serverSidebar.innerHTML = `
+                <div class="server-icon" id="direct-messages-icon" title="Direct Messages">DMs</div>
+                <div class="separator" style="height: 2px; background-color: #4a4a4a; margin: 10px 0;"></div>
+                <h3 class="server-list-header">Servers</h3>
+                <div class="server-icon" id="join-server-icon" title="Join a server">🔗</div>
+                <div class="server-icon" id="add-server-icon" title="Add a server">+</div>
+                <div class="user-panel" id="user-panel">
+                    <div class="user-avatar" id="my-avatar"></div>
+                    <div class="display-name" id="my-display-name"></div>
+                </div>
+            `;
+            
+            document.getElementById('direct-messages-icon').onclick = () => joinServer('direct-messages', 'Direct Messages');
+            document.getElementById('join-server-icon').onclick = joinServerIcon.onclick;
+            document.getElementById('add-server-icon').onclick = addServerIcon.onclick;
+            document.getElementById('user-panel').onclick = showUserSettings;
+            updateUserPanel();
+            joinServer('direct-messages', 'Direct Messages');
+            return;
+        }
+
         const { data: servers, error } = await supabase
             .from('servers')
-            .select('*');
+            .select('*')
+            .in('id', serverIds);
 
         if (error) {
             console.error("Error fetching servers:", error);
@@ -588,12 +1021,20 @@
             <div class="server-icon" id="direct-messages-icon" title="Direct Messages">DMs</div>
             <div class="separator" style="height: 2px; background-color: #4a4a4a; margin: 10px 0;"></div>
             <h3 class="server-list-header">Servers</h3>
+            <div class="server-icon" id="join-server-icon" title="Join a server">🔗</div>
             ${serverHtml}
             <div class="server-icon" id="add-server-icon" title="Add a server">+</div>
+            <div class="user-panel" id="user-panel">
+                <div class="user-avatar" id="my-avatar"></div>
+                <div class="display-name" id="my-display-name"></div>
+            </div>
         `;
-        
+
         document.getElementById('direct-messages-icon').onclick = () => joinServer('direct-messages', 'Direct Messages');
         document.getElementById('add-server-icon').onclick = addServerIcon.onclick;
+        document.getElementById('join-server-icon').onclick = joinServerIcon.onclick;
+        document.getElementById('user-panel').onclick = showUserSettings;
+        updateUserPanel();
 
         document.querySelectorAll('.server-icon[data-server-id]').forEach(icon => {
             const serverId = icon.dataset.serverId;
@@ -601,12 +1042,7 @@
             icon.onclick = () => joinServer(serverId, serverName);
         });
 
-        if (servers.length > 0) {
-            joinServer(servers[0].id, servers[0].room_name);
-        } else {
-             // Default to DMs if no servers exist
-            joinServer('direct-messages', 'Direct Messages');
-        }
+        joinServer(servers[0].id, servers[0].room_name);
     }
 
     async function joinServer(serverId, serverName) {
@@ -621,9 +1057,12 @@
         
         if (serverId === 'direct-messages') {
             channelListHeader.style.display = 'none';
+            getInviteButton.style.display = 'none';
             loadUsersForDMs();
         } else {
             channelListHeader.style.display = 'flex';
+            getInviteButton.style.display = 'block';
+
             const { data: channels, error } = await supabase
                 .from('channels')
                 .select('*')
@@ -651,9 +1090,40 @@
     }
     
     async function loadUsersForDMs() {
+        const { data: friends, error: friendError } = await supabase
+            .from('friends')
+            .select('user_id_1, user_id_2')
+            .or(`user_id_1.eq.${userId},user_id_2.eq.${userId}`);
+            
+        if (friendError) {
+            console.error("Error fetching friends:", friendError);
+            return;
+        }
+        
+        const friendIds = friends.flatMap(f => [f.user_id_1, f.user_id_2]).filter(id => id !== userId);
+        
+        const { data: openDms, error: openDmError } = await supabase
+            .from('users')
+            .select('user_id')
+            .eq('dm_access', 'everyone');
+
+        if (openDmError) {
+            console.error("Error fetching open DMs:", openDmError);
+            return;
+        }
+
+        const openDmIds = openDms.map(u => u.user_id).filter(id => id !== userId);
+        const uniqueUserIds = [...new Set([...friendIds, ...openDmIds])];
+        
+        if (uniqueUserIds.length === 0) {
+            channelList.innerHTML = '<p style="padding: 10px;">No DMs yet. Add a friend or wait for a public user to message you.</p>';
+            return;
+        }
+
         const { data: users, error } = await supabase
             .from('users')
-            .select('*');
+            .select('user_id, display_name, profile_picture_url')
+            .in('user_id', uniqueUserIds);
         
         if (error) {
             console.error('Error fetching users:', error);
@@ -666,9 +1136,22 @@
             if (user.user_id !== userId) {
                 const userItem = document.createElement('div');
                 userItem.className = 'user-list-item';
-                userItem.textContent = user.username;
                 userItem.dataset.userId = user.user_id;
-                userItem.onclick = () => startDM(user.user_id, user.username);
+                
+                const userAvatar = document.createElement('div');
+                userAvatar.className = 'user-avatar';
+                if (user.profile_picture_url) {
+                    userAvatar.innerHTML = `<img src="${user.profile_picture_url}" alt="${user.display_name}">`;
+                } else {
+                    userAvatar.textContent = user.display_name.substring(0, 2).toUpperCase();
+                }
+
+                const userNameSpan = document.createElement('span');
+                userNameSpan.textContent = user.display_name;
+
+                userItem.appendChild(userAvatar);
+                userItem.appendChild(userNameSpan);
+                userItem.onclick = () => startDM(user.user_id, user.display_name);
                 channelList.appendChild(userItem);
             }
         });
@@ -688,9 +1171,9 @@
         switchChatTarget('channel', channelId);
     }
     
-    async function startDM(targetUserId, targetUsername) {
+    async function startDM(targetUserId, targetDisplayName) {
         currentChatTarget = { type: 'dm', id: targetUserId };
-        chatTitle.textContent = `@ ${targetUsername}`;
+        chatTitle.textContent = `@ ${targetDisplayName}`;
 
         document.querySelectorAll('.user-list-item').forEach(item => item.classList.remove('active'));
         const activeUser = document.querySelector(`.user-list-item[data-user-id="${targetUserId}"]`);
@@ -728,9 +1211,9 @@
             messages.forEach(msg => {
                 const isMyMessage = msg.sender_id === userId;
                 if (msg.type === 'text') {
-                    addMessageToChat(msg.id, msg.sender_name, msg.content, isMyMessage);
+                    addMessageToChat(msg.id, msg.sender_id, msg.sender_name, msg.content, msg.sender_profile_picture_url, isMyMessage);
                 } else if (msg.type === 'image') {
-                    addImageToChat(msg.id, msg.sender_name, msg.content, isMyMessage);
+                    addImageToChat(msg.id, msg.sender_id, msg.sender_name, msg.content, msg.sender_profile_picture_url, isMyMessage);
                 }
             });
             chatbox.scrollTop = chatbox.scrollHeight;
@@ -740,9 +1223,9 @@
                     const msg = payload.new;
                     const isMyMessage = msg.sender_id === userId;
                     if (msg.type === 'text') {
-                        addMessageToChat(msg.id, msg.sender_name, msg.content, isMyMessage);
+                        addMessageToChat(msg.id, msg.sender_id, msg.sender_name, msg.content, msg.sender_profile_picture_url, isMyMessage);
                     } else if (msg.type === 'image') {
-                        addImageToChat(msg.id, msg.sender_name, msg.content, isMyMessage);
+                        addImageToChat(msg.id, msg.sender_id, msg.sender_name, msg.content, msg.sender_profile_picture_url, isMyMessage);
                     }
                 })
                 .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'room_messages', filter: `channel_id=eq.${targetId}` }, (payload) => {
@@ -774,9 +1257,9 @@
             messages.forEach(msg => {
                 const isMyMessage = msg.sender_id === userId;
                 if (msg.type === 'text') {
-                    addMessageToChat(msg.id, msg.sender_name, msg.content, isMyMessage);
+                    addMessageToChat(msg.id, msg.sender_id, msg.sender_name, msg.content, msg.sender_profile_picture_url, isMyMessage);
                 } else if (msg.type === 'image') {
-                    addImageToChat(msg.id, msg.sender_name, msg.content, isMyMessage);
+                    addImageToChat(msg.id, msg.sender_id, msg.sender_name, msg.content, msg.sender_profile_picture_url, isMyMessage);
                 }
             });
             chatbox.scrollTop = chatbox.scrollHeight;
@@ -786,9 +1269,9 @@
                     const msg = payload.new;
                     const isMyMessage = msg.sender_id === userId;
                     if (msg.type === 'text') {
-                        addMessageToChat(msg.id, msg.sender_name, msg.content, isMyMessage);
+                        addMessageToChat(msg.id, msg.sender_id, msg.sender_name, msg.content, msg.sender_profile_picture_url, isMyMessage);
                     } else if (msg.type === 'image') {
-                        addImageToChat(msg.id, msg.sender_name, msg.content, isMyMessage);
+                        addImageToChat(msg.id, msg.sender_id, msg.sender_name, msg.content, msg.sender_profile_picture_url, isMyMessage);
                     }
                 })
                 .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'dms', filter: `dm_path=eq.${dmPath}` }, (payload) => {
@@ -801,65 +1284,106 @@
         }
     }
 
-    async function addMessageToChat(id, sender, content, isMyMessage = false) {
+    async function addMessageToChat(id, senderId, senderName, content, senderProfilePictureUrl, isMyMessage = false) {
         const messageWrapper = document.createElement('div');
-        messageWrapper.className = 'message-wrapper';
+        messageWrapper.className = `message-wrapper ${isMyMessage ? 'my-message' : ''}`;
         messageWrapper.id = `message-${id}`;
+        
+        const avatarElement = document.createElement('div');
+        avatarElement.className = 'message-avatar';
+        avatarElement.onclick = () => {
+            const { data: user, error } = supabase.from('users').select('username').eq('user_id', senderId).single().then(response => {
+                if (response.data) {
+                    showUserProfile(senderId, senderName, senderProfilePictureUrl, response.data.username);
+                }
+            });
+        };
+
+        if (senderProfilePictureUrl) {
+            avatarElement.innerHTML = `<img src="${senderProfilePictureUrl}" alt="${senderName}">`;
+        } else {
+            avatarElement.textContent = senderName ? senderName.substring(0, 2).toUpperCase() : '?';
+        }
+        
+        const contentContainer = document.createElement('div');
+        contentContainer.className = 'message-content-container';
+
+        const senderElement = document.createElement('div');
+        senderElement.className = 'message-sender';
+        senderElement.textContent = isMyMessage ? 'You' : senderName;
         
         const messageElement = document.createElement('div');
         messageElement.classList.add('message');
+        
+        const contentElement = document.createElement('div');
+        contentElement.className = 'message-text';
+        contentElement.textContent = content;
+
+        messageElement.appendChild(contentElement);
+        contentContainer.appendChild(senderElement);
+        contentContainer.appendChild(messageElement);
+        messageWrapper.appendChild(avatarElement);
+        messageWrapper.appendChild(contentContainer);
+
         if (isMyMessage) {
-            messageElement.classList.add('my-message');
             const deleteButton = document.createElement('button');
             deleteButton.className = 'delete-button';
             deleteButton.textContent = 'x';
             deleteButton.onclick = () => deleteMessage(id);
             messageWrapper.appendChild(deleteButton);
         }
-
-        const senderElement = document.createElement('div');
-        senderElement.className = 'message-sender';
-        senderElement.textContent = isMyMessage ? 'You' : sender;
-        
-        const contentElement = document.createElement('div');
-        contentElement.className = 'message-content';
-        contentElement.textContent = content;
-
-        messageElement.appendChild(senderElement);
-        messageElement.appendChild(contentElement);
-        messageWrapper.appendChild(messageElement);
 
         chatbox.appendChild(messageWrapper);
         chatbox.scrollTop = chatbox.scrollHeight;
     }
 
-    async function addImageToChat(id, sender, imageData, isMyMessage = false) {
+    async function addImageToChat(id, senderId, senderName, imageData, senderProfilePictureUrl, isMyMessage = false) {
         const messageWrapper = document.createElement('div');
-        messageWrapper.className = 'message-wrapper';
+        messageWrapper.className = `message-wrapper ${isMyMessage ? 'my-message' : ''}`;
         messageWrapper.id = `message-${id}`;
+        
+        const avatarElement = document.createElement('div');
+        avatarElement.className = 'message-avatar';
+        avatarElement.onclick = () => {
+             const { data: user, error } = supabase.from('users').select('username').eq('user_id', senderId).single().then(response => {
+                if (response.data) {
+                    showUserProfile(senderId, senderName, senderProfilePictureUrl, response.data.username);
+                }
+            });
+        };
+        if (senderProfilePictureUrl) {
+            avatarElement.innerHTML = `<img src="${senderProfilePictureUrl}" alt="${senderName}">`;
+        } else {
+            avatarElement.textContent = senderName ? senderName.substring(0, 2).toUpperCase() : '?';
+        }
+        
+        const contentContainer = document.createElement('div');
+        contentContainer.className = 'message-content-container';
+
+        const senderElement = document.createElement('div');
+        senderElement.className = 'message-sender';
+        senderElement.textContent = isMyMessage ? 'You' : senderName;
         
         const messageElement = document.createElement('div');
         messageElement.classList.add('message');
+        
+        const imageElement = document.createElement('img');
+        imageElement.className = 'message-image';
+        imageElement.src = imageData;
+
+        messageElement.appendChild(imageElement);
+        contentContainer.appendChild(senderElement);
+        contentContainer.appendChild(messageElement);
+        messageWrapper.appendChild(avatarElement);
+        messageWrapper.appendChild(contentContainer);
+
         if (isMyMessage) {
-            messageElement.classList.add('my-message');
             const deleteButton = document.createElement('button');
             deleteButton.className = 'delete-button';
             deleteButton.textContent = 'x';
             deleteButton.onclick = () => deleteMessage(id);
             messageWrapper.appendChild(deleteButton);
         }
-
-        const senderElement = document.createElement('div');
-        senderElement.className = 'message-sender';
-        senderElement.textContent = isMyMessage ? 'You' : sender;
-        
-        const imageElement = document.createElement('img');
-        imageElement.className = 'message-image';
-        imageElement.src = imageData;
-
-        messageElement.appendChild(senderElement);
-        messageElement.appendChild(imageElement);
-        messageWrapper.appendChild(messageElement);
 
         chatbox.appendChild(messageWrapper);
         chatbox.scrollTop = chatbox.scrollHeight;
@@ -897,12 +1421,16 @@
         supabase.auth.getSession().then(({ data: { session } }) => {
             if (session) {
                 const user = session.user;
-                supabase.from('users').select('username').eq('user_id', user.id).single().then(({ data: userProfile }) => {
+                supabase.from('users').select('username, display_name, profile_picture_url, dm_access').eq('user_id', user.id).single().then(({ data: userProfile }) => {
                     if (userProfile) {
                         localUsername = userProfile.username;
+                        localDisplayName = userProfile.display_name;
+                        localProfilePictureUrl = userProfile.profile_picture_url;
+                        localDmAccess = userProfile.dm_access;
                         userId = user.id;
                         authSection.style.display = 'none';
                         mainApp.style.display = 'flex';
+                        updateUserPanel();
                         loadServers();
                     }
                 });
