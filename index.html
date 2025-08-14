@@ -56,6 +56,7 @@
             display: none;
             width: 100%;
             height: 100vh;
+            display: flex; /* Ensure main-app is a flex container */
         }
 
         .server-sidebar {
@@ -114,7 +115,47 @@
         .main-content {
             flex-grow: 1;
             display: flex;
+        }
+
+        .channel-sidebar {
+            width: 240px;
+            background-color: var(--secondary-bg);
+            padding: 10px;
+            display: flex;
             flex-direction: column;
+            gap: 5px;
+        }
+
+        .channel-list-header, .user-list-header {
+            color: var(--white-text);
+            font-weight: bold;
+            margin-bottom: 5px;
+            padding: 5px;
+        }
+
+        .channel-list-item, .user-list-item {
+            padding: 8px;
+            border-radius: 5px;
+            cursor: pointer;
+            color: var(--light-grey-text);
+            transition: background-color 0.2s;
+        }
+
+        .channel-list-item:hover, .user-list-item:hover {
+            background-color: var(--tertiary-bg);
+            color: var(--white-text);
+        }
+        
+        .channel-list-item.active {
+            background-color: var(--accent-blue);
+            color: var(--white-text);
+        }
+
+        .chat-area {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            background-color: var(--secondary-bg);
         }
 
         .top-bar {
@@ -123,6 +164,7 @@
             display: flex;
             align-items: center;
             gap: 20px;
+            border-bottom: 1px solid #4a4a4a;
         }
 
         .top-bar-tab {
@@ -148,7 +190,6 @@
             flex-grow: 1;
             display: flex;
             flex-direction: column;
-            background-color: var(--secondary-bg);
             padding: 20px;
         }
 
@@ -269,22 +310,29 @@
     </div>
     
     <div class="main-content">
-        <div class="top-bar">
-            <h2 id="chat-title"></h2>
-            <div id="top-bar-tabs">
-                <div class="top-bar-tab active" id="channels-tab">Channels</div>
-                <div class="top-bar-tab" id="users-tab">Users</div>
-            </div>
+        <div class="channel-sidebar">
+            <h3 class="channel-list-header">Text Channels</h3>
+            <div id="channel-list"></div>
         </div>
 
-        <div class="chat-container">
-            <div id="chatbox"></div>
-            <form id="chat-input-form">
-                <input type="file" id="image-input" accept="image/*" style="display:none;">
-                <button type="button" id="upload-image-button">🖼️</button>
-                <input type="text" id="chat-input" placeholder="Type a message..." autocomplete="off">
-                <button type="submit" id="send-button">Send</button>
-            </form>
+        <div class="chat-area">
+            <div class="top-bar">
+                <h2 id="chat-title"></h2>
+                <div id="top-bar-tabs">
+                    <div class="top-bar-tab active" id="channels-tab">Channels</div>
+                    <div class="top-bar-tab" id="users-tab">Users</div>
+                </div>
+            </div>
+
+            <div class="chat-container">
+                <div id="chatbox"></div>
+                <form id="chat-input-form">
+                    <input type="file" id="image-input" accept="image/*" style="display:none;">
+                    <button type="button" id="upload-image-button">🖼️</button>
+                    <input type="text" id="chat-input" placeholder="Type a message..." autocomplete="off">
+                    <button type="submit" id="send-button">Send</button>
+                </form>
+            </div>
         </div>
     </div>
 </div>
@@ -305,6 +353,7 @@
     const authStatus = document.getElementById('auth-status');
     const togglePassword = document.getElementById('toggle-password');
     const serverSidebar = document.getElementById('server-sidebar');
+    const channelList = document.getElementById('channel-list');
     const chatbox = document.getElementById('chatbox');
     const chatInput = document.getElementById('chat-input');
     const chatInputForm = document.getElementById('chat-input-form');
@@ -318,7 +367,8 @@
 
     let localUsername;
     let userId;
-    let currentRoomName;
+    let currentServerId;
+    let currentChannelId;
     let currentChatTarget = { type: 'room', id: '' };
     let chatSubscription;
 
@@ -356,7 +406,6 @@
                         authSection.style.display = 'none';
                         mainApp.style.display = 'flex';
                         loadServers();
-                        setupDmNotificationListener();
                     }
                 } catch (error) {
                     console.error("Login error:", error);
@@ -406,13 +455,17 @@
         addServerIcon.onclick = async () => {
             const newRoomName = prompt("Enter a new server name:");
             if (newRoomName) {
-                const { error } = await supabase
+                const { error, data } = await supabase
                     .from('servers')
-                    .insert({ room_name: newRoomName, owner_id: userId });
+                    .insert({ room_name: newRoomName, owner_id: userId })
+                    .select(); // Select the inserted data to get the new server's ID
                 if (error) {
                     console.error("Error creating server:", error);
                     alert("Failed to create server. It might already exist.");
                 } else {
+                    const newServer = data[0];
+                    // Create a default "general" channel for the new server
+                    await supabase.from('channels').insert({ server_id: newServer.id, name: 'general' });
                     loadServers();
                 }
             }
@@ -422,9 +475,9 @@
             e.preventDefault();
             const message = chatInput.value.trim();
             if (message) {
-                if (currentChatTarget.type === 'room') {
+                if (currentChatTarget.type === 'channel') {
                     await supabase.from('room_messages').insert({
-                        room_name: currentChatTarget.id,
+                        channel_id: currentChatTarget.id,
                         sender_id: userId,
                         sender_name: localUsername,
                         type: 'text',
@@ -458,9 +511,9 @@
                 const reader = new FileReader();
                 reader.onload = async (e) => {
                     const imageData = e.target.result;
-                    if (currentChatTarget.type === 'room') {
+                    if (currentChatTarget.type === 'channel') {
                         await supabase.from('room_messages').insert({
-                            room_name: currentChatTarget.id,
+                            channel_id: currentChatTarget.id,
                             sender_id: userId,
                             sender_name: localUsername,
                             type: 'image',
@@ -489,12 +542,13 @@
         channelsTab.onclick = () => {
             channelsTab.classList.add('active');
             usersTab.classList.remove('active');
-            switchChatTarget('room', currentRoomName);
+            // This now just shows the channel list in the sidebar, no longer a separate chat tab.
         };
 
         usersTab.onclick = () => {
             usersTab.classList.add('active');
             channelsTab.classList.remove('active');
+            // This will display a list of online users in the main chatbox area.
             loadOnlineUsersAsTabs();
         };
     }
@@ -521,52 +575,76 @@
                 serverIcon.textContent = server.room_name.substring(0, 2).toUpperCase();
             }
             serverIcon.title = server.room_name;
-            serverIcon.onclick = () => joinServer(server.room_name);
+            serverIcon.onclick = () => joinServer(server.id);
             serverSidebar.appendChild(serverIcon);
         });
 
         if (servers.length > 0) {
-            joinServer(servers[0].room_name);
+            joinServer(servers[0].id);
         }
         
-        // Re-attach listener to the new add server icon
         document.getElementById('add-server-icon').onclick = addServerIcon.onclick;
     }
 
-    async function joinServer(roomName) {
-        if (currentRoomName) {
-            await supabase.from('online_users').delete().eq('user_id', userId);
-        }
-        currentRoomName = roomName;
-        currentChatTarget = { type: 'room', id: roomName };
-        chatTitle.textContent = `# ${roomName}`;
-
-        await supabase.from('online_users').upsert(
-            { user_id: userId, room_name: currentRoomName, username: localUsername },
-            { onConflict: ['user_id'] }
-        );
+    async function joinServer(serverId) {
+        currentServerId = serverId;
 
         // Update active server icon
         document.querySelectorAll('.server-icon').forEach(icon => icon.classList.remove('active'));
-        const activeIcon = Array.from(serverSidebar.children).find(el => el.title === roomName);
+        const activeIcon = Array.from(serverSidebar.children).find(el => el.onclick && el.onclick.toString().includes(`joinServer('${serverId}')`));
         if (activeIcon) {
             activeIcon.classList.add('active');
         }
 
-        channelsTab.classList.add('active');
-        usersTab.classList.remove('active');
-        switchChatTarget('room', roomName);
+        // Load channels for the selected server
+        const { data: channels, error } = await supabase
+            .from('channels')
+            .select('*')
+            .eq('server_id', serverId);
+
+        if (error) {
+            console.error("Error fetching channels:", error);
+            return;
+        }
+        
+        channelList.innerHTML = '';
+        channels.forEach(channel => {
+            const channelItem = document.createElement('div');
+            channelItem.className = 'channel-list-item';
+            channelItem.textContent = `# ${channel.name}`;
+            channelItem.onclick = () => joinChannel(channel.id, channel.name);
+            channelList.appendChild(channelItem);
+        });
+
+        // Join the first channel by default
+        if (channels.length > 0) {
+            joinChannel(channels[0].id, channels[0].name);
+        }
+    }
+
+    async function joinChannel(channelId, channelName) {
+        currentChannelId = channelId;
+        currentChatTarget = { type: 'channel', id: channelId };
+        chatTitle.textContent = `# ${channelName}`;
+
+        // Update active channel item
+        document.querySelectorAll('.channel-list-item').forEach(item => item.classList.remove('active'));
+        const activeChannel = Array.from(channelList.children).find(el => el.onclick && el.onclick.toString().includes(`joinChannel('${channelId}')`));
+        if (activeChannel) {
+            activeChannel.classList.add('active');
+        }
+
+        switchChatTarget('channel', channelId);
     }
     
     async function loadOnlineUsersAsTabs() {
         chatbox.innerHTML = '';
         const { data: users, error } = await supabase
-            .from('online_users')
-            .select('*')
-            .eq('room_name', currentRoomName);
+            .from('users')
+            .select('*');
         
         if (error) {
-            console.error('Error fetching online users:', error);
+            console.error('Error fetching users:', error);
             chatbox.innerHTML = '<p>Error loading users.</p>';
             return;
         }
@@ -580,7 +658,7 @@
         users.forEach(user => {
             if (user.user_id !== userId) {
                 const userTab = document.createElement('div');
-                userTab.className = 'top-bar-tab';
+                userTab.className = 'user-list-item';
                 userTab.textContent = user.username;
                 userTab.onclick = () => {
                     chatTitle.textContent = `DM with ${user.username}`;
@@ -601,15 +679,15 @@
         loadingMessage.textContent = 'Loading messages...';
         chatbox.appendChild(loadingMessage);
         
-        if (targetType === 'room') {
+        if (targetType === 'channel') {
             const { data: messages, error } = await supabase
                 .from('room_messages')
                 .select('*')
-                .eq('room_name', targetId)
+                .eq('channel_id', targetId)
                 .order('created_at', { ascending: true });
 
             if (error) {
-                console.error('Error fetching room messages:', error);
+                console.error('Error fetching channel messages:', error);
                 chatbox.innerHTML = '<p>Error loading messages.</p>';
                 return;
             }
@@ -626,7 +704,7 @@
             chatbox.scrollTop = chatbox.scrollHeight;
 
             chatSubscription = supabase.channel('room_messages')
-                .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'room_messages', filter: `room_name=eq.${targetId}` }, (payload) => {
+                .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'room_messages', filter: `channel_id=eq.${targetId}` }, (payload) => {
                     const msg = payload.new;
                     const isMyMessage = msg.sender_id === userId;
                     if (msg.type === 'text') {
@@ -635,7 +713,7 @@
                         addImageToChat(msg.id, msg.sender_name, msg.content, isMyMessage);
                     }
                 })
-                .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'room_messages', filter: `room_name=eq.${targetId}` }, (payload) => {
+                .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'room_messages', filter: `channel_id=eq.${targetId}` }, (payload) => {
                     const messageElement = document.getElementById(`message-${payload.old.id}`);
                     if (messageElement) {
                         messageElement.remove();
@@ -696,7 +774,7 @@
         const messageWrapper = document.createElement('div');
         messageWrapper.className = 'message-wrapper';
         messageWrapper.id = `message-${id}`;
-
+        
         const messageElement = document.createElement('div');
         messageElement.classList.add('message');
         if (isMyMessage) {
@@ -710,8 +788,8 @@
 
         const senderElement = document.createElement('div');
         senderElement.className = 'message-sender';
-        senderElement.textContent = sender;
-
+        senderElement.textContent = isMyMessage ? 'You' : sender;
+        
         const contentElement = document.createElement('div');
         contentElement.className = 'message-content';
         contentElement.textContent = content;
@@ -742,7 +820,7 @@
 
         const senderElement = document.createElement('div');
         senderElement.className = 'message-sender';
-        senderElement.textContent = sender;
+        senderElement.textContent = isMyMessage ? 'You' : sender;
         
         const imageElement = document.createElement('img');
         imageElement.className = 'message-image';
@@ -759,7 +837,7 @@
     async function deleteMessage(messageId) {
         const confirmation = confirm("Are you sure you want to delete this message?");
         if (confirmation) {
-            if (currentChatTarget.type === 'room') {
+            if (currentChatTarget.type === 'channel') {
                 const { error } = await supabase
                     .from('room_messages')
                     .delete()
@@ -781,10 +859,6 @@
                 }
             }
         }
-    }
-
-    function setupDmNotificationListener() {
-        // This functionality needs to be revisited to fit the new UI
     }
 
     document.addEventListener('DOMContentLoaded', () => {
