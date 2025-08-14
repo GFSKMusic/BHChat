@@ -7,7 +7,7 @@
             --primary-bg: #2b2d31;
             --secondary-bg: #313338;
             --tertiary-bg: #383a40;
-            --accent-blue: #007bff;
+            --accent-blue: #5865f2;
             --white-text: #ffffff;
             --light-grey-text: #b1b5b9;
         }
@@ -56,7 +56,7 @@
             display: none;
             width: 100%;
             height: 100vh;
-            display: flex; /* Ensure main-app is a flex container */
+            display: flex;
         }
 
         .server-sidebar {
@@ -126,6 +126,15 @@
             gap: 5px;
         }
 
+        .server-name-header {
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: var(--white-text);
+            padding: 10px;
+            border-bottom: 1px solid #4a4a4a;
+            margin-bottom: 10px;
+        }
+
         .channel-list-header {
             display: flex;
             justify-content: space-between;
@@ -150,6 +159,9 @@
             cursor: pointer;
             color: var(--light-grey-text);
             transition: background-color 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
 
         .channel-list-item:hover, .user-list-item:hover {
@@ -157,7 +169,7 @@
             color: var(--white-text);
         }
         
-        .channel-list-item.active {
+        .channel-list-item.active, .user-list-item.active {
             background-color: var(--accent-blue);
             color: var(--white-text);
         }
@@ -176,25 +188,6 @@
             align-items: center;
             gap: 20px;
             border-bottom: 1px solid #4a4a4a;
-        }
-
-        .top-bar-tab {
-            padding: 8px 12px;
-            background-color: var(--tertiary-bg);
-            border-radius: 8px;
-            cursor: pointer;
-            color: var(--light-grey-text);
-            transition: background-color 0.2s, color 0.2s;
-        }
-
-        .top-bar-tab:hover {
-            background-color: var(--accent-blue);
-            color: var(--white-text);
-        }
-
-        .top-bar-tab.active {
-            background-color: var(--accent-blue);
-            color: var(--white-text);
         }
 
         .chat-container {
@@ -251,7 +244,7 @@
         }
 
         .message.my-message {
-            background-color: #5865f2;
+            background-color: var(--accent-blue);
             align-self: flex-end;
         }
 
@@ -316,13 +309,16 @@
 
 <div id="main-app">
     <div class="server-sidebar" id="server-sidebar">
+        <div class="server-icon" id="direct-messages-icon" title="Direct Messages">DMs</div>
+        <div class="separator" style="height: 2px; background-color: #4a4a4a; margin: 10px 0;"></div>
         <h3 class="server-list-header">Servers</h3>
-        <div class="server-icon" id="add-server-icon">+</div>
+        <div class="server-icon" id="add-server-icon" title="Add a server">+</div>
     </div>
     
     <div class="main-content">
         <div class="channel-sidebar">
-            <div class="channel-list-header">
+            <h2 id="server-name-header" class="server-name-header"></h2>
+            <div class="channel-list-header" id="channel-list-header">
                 <h3>Text Channels</h3>
                 <button id="add-channel-button">+</button>
             </div>
@@ -332,10 +328,6 @@
         <div class="chat-area">
             <div class="top-bar">
                 <h2 id="chat-title"></h2>
-                <div id="top-bar-tabs">
-                    <div class="top-bar-tab active" id="channels-tab">Channels</div>
-                    <div class="top-bar-tab" id="users-tab">Users</div>
-                </div>
             </div>
 
             <div class="chat-container">
@@ -373,18 +365,17 @@
     const chatInput = document.getElementById('chat-input');
     const chatInputForm = document.getElementById('chat-input-form');
     const chatTitle = document.getElementById('chat-title');
+    const serverNameHeader = document.getElementById('server-name-header');
     const uploadImageButton = document.getElementById('upload-image-button');
     const imageInput = document.getElementById('image-input');
-    const topBarTabs = document.getElementById('top-bar-tabs');
-    const channelsTab = document.getElementById('channels-tab');
-    const usersTab = document.getElementById('users-tab');
     const addServerIcon = document.getElementById('add-server-icon');
+    const directMessagesIcon = document.getElementById('direct-messages-icon');
+    const channelListHeader = document.getElementById('channel-list-header');
 
     let localUsername;
     let userId;
     let currentServerId;
-    let currentChannelId;
-    let currentChatTarget = { type: 'channel', id: '' };
+    let currentChatTarget = { type: '', id: '' };
     let chatSubscription;
 
     function setupEventListeners() {
@@ -484,9 +475,9 @@
                 }
             }
         };
-        
+
         addChannelButton.onclick = async () => {
-            if (!currentServerId) {
+            if (!currentServerId || currentServerId === 'direct-messages') {
                 alert("Please select a server first.");
                 return;
             }
@@ -499,9 +490,13 @@
                     console.error("Error creating channel:", error);
                     alert("Failed to create channel. It might already exist in this server.");
                 } else {
-                    joinServer(currentServerId); // Reload channels to show the new one
+                    joinServer(currentServerId);
                 }
             }
+        };
+        
+        directMessagesIcon.onclick = () => {
+            joinServer('direct-messages', 'Direct Messages');
         };
         
         chatInputForm.addEventListener('submit', async (e) => {
@@ -516,7 +511,7 @@
                         type: 'text',
                         content: message,
                     });
-                } else {
+                } else if (currentChatTarget.type === 'dm') {
                     const targetUserId = currentChatTarget.id;
                     const smallerId = userId < targetUserId ? userId : targetUserId;
                     const largerId = userId > targetUserId ? userId : targetUserId;
@@ -552,7 +547,7 @@
                             type: 'image',
                             content: imageData,
                         });
-                    } else {
+                    } else if (currentChatTarget.type === 'dm') {
                         const targetUserId = currentChatTarget.id;
                         const smallerId = userId < targetUserId ? userId : targetUserId;
                         const largerId = userId > targetUserId ? userId : targetUserId;
@@ -571,21 +566,6 @@
             }
             imageInput.value = '';
         };
-
-        channelsTab.onclick = () => {
-            channelsTab.classList.add('active');
-            usersTab.classList.remove('active');
-            // Re-show the channel list in the sidebar if it was hidden
-            // by the users tab functionality (which is not yet implemented)
-            // For now, this has no visible effect but is good practice.
-            joinChannel(currentChannelId, document.querySelector('.channel-list-item.active')?.textContent.replace('# ', ''));
-        };
-
-        usersTab.onclick = () => {
-            usersTab.classList.add('active');
-            channelsTab.classList.remove('active');
-            loadOnlineUsersAsTabs();
-        };
     }
 
     async function loadServers() {
@@ -598,107 +578,128 @@
             return;
         }
 
-        serverSidebar.innerHTML = '<h3 class="server-list-header">Servers</h3><div class="server-icon" id="add-server-icon">+</div>';
-        servers.forEach(server => {
-            const serverIcon = document.createElement('div');
-            serverIcon.className = 'server-icon';
-            if (server.image_url) {
-                const img = document.createElement('img');
-                img.src = server.image_url;
-                serverIcon.appendChild(img);
-            } else {
-                serverIcon.textContent = server.room_name.substring(0, 2).toUpperCase();
-            }
-            serverIcon.title = server.room_name;
-            serverIcon.onclick = () => joinServer(server.id);
-            serverSidebar.appendChild(serverIcon);
+        const serverHtml = servers.map(server => `
+            <div class="server-icon" data-server-id="${server.id}" data-server-name="${server.room_name}" title="${server.room_name}">
+                ${server.image_url ? `<img src="${server.image_url}" alt="${server.room_name.substring(0, 2).toUpperCase()}">` : server.room_name.substring(0, 2).toUpperCase()}
+            </div>
+        `).join('');
+
+        serverSidebar.innerHTML = `
+            <div class="server-icon" id="direct-messages-icon" title="Direct Messages">DMs</div>
+            <div class="separator" style="height: 2px; background-color: #4a4a4a; margin: 10px 0;"></div>
+            <h3 class="server-list-header">Servers</h3>
+            ${serverHtml}
+            <div class="server-icon" id="add-server-icon" title="Add a server">+</div>
+        `;
+        
+        document.getElementById('direct-messages-icon').onclick = () => joinServer('direct-messages', 'Direct Messages');
+        document.getElementById('add-server-icon').onclick = addServerIcon.onclick;
+
+        document.querySelectorAll('.server-icon[data-server-id]').forEach(icon => {
+            const serverId = icon.dataset.serverId;
+            const serverName = icon.dataset.serverName;
+            icon.onclick = () => joinServer(serverId, serverName);
         });
 
         if (servers.length > 0) {
-            joinServer(servers[0].id);
+            joinServer(servers[0].id, servers[0].room_name);
+        } else {
+             // Default to DMs if no servers exist
+            joinServer('direct-messages', 'Direct Messages');
         }
-        
-        document.getElementById('add-server-icon').onclick = addServerIcon.onclick;
     }
 
-    async function joinServer(serverId) {
+    async function joinServer(serverId, serverName) {
         currentServerId = serverId;
+        serverNameHeader.textContent = serverName;
 
         document.querySelectorAll('.server-icon').forEach(icon => icon.classList.remove('active'));
-        const activeIcon = Array.from(serverSidebar.children).find(el => el.onclick && el.onclick.toString().includes(`joinServer('${serverId}')`));
+        const activeIcon = document.querySelector(`.server-icon[data-server-id="${serverId}"]`) || document.getElementById(serverId + '-icon');
         if (activeIcon) {
             activeIcon.classList.add('active');
         }
-
-        const { data: channels, error } = await supabase
-            .from('channels')
-            .select('*')
-            .eq('server_id', serverId);
-
-        if (error) {
-            console.error("Error fetching channels:", error);
-            return;
-        }
         
-        channelList.innerHTML = '';
-        channels.forEach(channel => {
-            const channelItem = document.createElement('div');
-            channelItem.className = 'channel-list-item';
-            channelItem.textContent = `# ${channel.name}`;
-            channelItem.onclick = () => joinChannel(channel.id, channel.name);
-            channelList.appendChild(channelItem);
-        });
+        if (serverId === 'direct-messages') {
+            channelListHeader.style.display = 'none';
+            loadUsersForDMs();
+        } else {
+            channelListHeader.style.display = 'flex';
+            const { data: channels, error } = await supabase
+                .from('channels')
+                .select('*')
+                .eq('server_id', serverId);
 
-        if (channels.length > 0) {
-            joinChannel(channels[0].id, channels[0].name);
+            if (error) {
+                console.error("Error fetching channels:", error);
+                return;
+            }
+            
+            channelList.innerHTML = '';
+            channels.forEach(channel => {
+                const channelItem = document.createElement('div');
+                channelItem.className = 'channel-list-item';
+                channelItem.textContent = `# ${channel.name}`;
+                channelItem.dataset.channelId = channel.id;
+                channelItem.onclick = () => joinChannel(channel.id, channel.name);
+                channelList.appendChild(channelItem);
+            });
+
+            if (channels.length > 0) {
+                joinChannel(channels[0].id, channels[0].name);
+            }
         }
-    }
-
-    async function joinChannel(channelId, channelName) {
-        currentChannelId = channelId;
-        currentChatTarget = { type: 'channel', id: channelId };
-        chatTitle.textContent = `# ${channelName}`;
-
-        document.querySelectorAll('.channel-list-item').forEach(item => item.classList.remove('active'));
-        const activeChannel = Array.from(channelList.children).find(el => el.onclick && el.onclick.toString().includes(`joinChannel('${channelId}')`));
-        if (activeChannel) {
-            activeChannel.classList.add('active');
-        }
-
-        switchChatTarget('channel', channelId);
     }
     
-    async function loadOnlineUsersAsTabs() {
-        chatbox.innerHTML = '';
+    async function loadUsersForDMs() {
         const { data: users, error } = await supabase
             .from('users')
             .select('*');
         
         if (error) {
             console.error('Error fetching users:', error);
-            chatbox.innerHTML = '<p>Error loading users.</p>';
+            channelList.innerHTML = '<p>Error loading users.</p>';
             return;
         }
-
-        const userListElement = document.createElement('div');
-        userListElement.style.display = 'flex';
-        userListElement.style.flexDirection = 'column';
-        userListElement.style.gap = '10px';
-        userListElement.style.padding = '10px';
-
+        
+        channelList.innerHTML = '';
         users.forEach(user => {
             if (user.user_id !== userId) {
-                const userTab = document.createElement('div');
-                userTab.className = 'user-list-item';
-                userTab.textContent = user.username;
-                userTab.onclick = () => {
-                    chatTitle.textContent = `DM with ${user.username}`;
-                    switchChatTarget('dm', user.user_id);
-                };
-                userListElement.appendChild(userTab);
+                const userItem = document.createElement('div');
+                userItem.className = 'user-list-item';
+                userItem.textContent = user.username;
+                userItem.dataset.userId = user.user_id;
+                userItem.onclick = () => startDM(user.user_id, user.username);
+                channelList.appendChild(userItem);
             }
         });
-        chatbox.appendChild(userListElement);
+    }
+
+    async function joinChannel(channelId, channelName) {
+        currentChatTarget = { type: 'channel', id: channelId };
+        chatTitle.textContent = `# ${channelName}`;
+
+        document.querySelectorAll('.channel-list-item').forEach(item => item.classList.remove('active'));
+        const activeChannel = document.querySelector(`.channel-list-item[data-channel-id="${channelId}"]`);
+        if (activeChannel) {
+            activeChannel.classList.add('active');
+        }
+        document.querySelectorAll('.user-list-item').forEach(item => item.classList.remove('active'));
+        
+        switchChatTarget('channel', channelId);
+    }
+    
+    async function startDM(targetUserId, targetUsername) {
+        currentChatTarget = { type: 'dm', id: targetUserId };
+        chatTitle.textContent = `@ ${targetUsername}`;
+
+        document.querySelectorAll('.user-list-item').forEach(item => item.classList.remove('active'));
+        const activeUser = document.querySelector(`.user-list-item[data-user-id="${targetUserId}"]`);
+        if (activeUser) {
+            activeUser.classList.add('active');
+        }
+        document.querySelectorAll('.channel-list-item').forEach(item => item.classList.remove('active'));
+
+        switchChatTarget('dm', targetUserId);
     }
     
     async function switchChatTarget(targetType, targetId) {
@@ -798,7 +799,6 @@
                 })
                 .subscribe();
         }
-        currentChatTarget = { type: targetType, id: targetId };
     }
 
     async function addMessageToChat(id, sender, content, isMyMessage = false) {
