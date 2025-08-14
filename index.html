@@ -1402,18 +1402,31 @@
             const serverName = prompt("Enter new server name:");
             if (serverName) {
                 try {
-                    const { data, error } = await supabase
+                    const inviteCode = generateInviteCode();
+                    const { data: newServer, error } = await supabase
                         .from('servers')
-                        .insert([{ name: serverName, owner_id: userId }])
+                        .insert([{ name: serverName, owner_id: userId, invite_code: inviteCode }])
                         .select();
                     if (error) throw error;
-                    if (data && data.length > 0) {
-                        const newServerId = data[0].id;
+                    if (newServer && newServer.length > 0) {
+                        const newServerId = newServer[0].id;
                         // Add a default channel to the new server
-                        await supabase
+                        const { data: newChannel, error: channelError } = await supabase
                             .from('channels')
-                            .insert([{ name: 'general', server_id: newServerId }]);
+                            .insert([{ name: 'general', server_id: newServerId }])
+                            .select();
+                        if (channelError) throw channelError;
+                        // Automatically join the new server
+                        const { error: joinError } = await supabase
+                            .from('server_members')
+                            .insert([{ server_id: newServerId, user_id: userId }]);
+                        if (joinError) throw joinError;
+
                         loadServers();
+                        if (newChannel && newChannel.length > 0) {
+                            loadChannels(newServerId, serverName, userId);
+                            loadChannelMessages(newChannel[0].id, newChannel[0].name);
+                        }
                     }
                 } catch (error) {
                     console.error('Error creating server:', error);
@@ -1559,37 +1572,43 @@
         serverSettingsForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             try {
-                const { data, error } = await supabase
-                    .from('servers')
+                // Update display name and dm access
+                await supabase
+                    .from('users')
                     .update({
-                        name: serverNameInput.value,
-                        is_public: isPublicCheckbox.checked,
+                        display_name: settingsDisplayNameInput.value,
+                        dm_access: settingsDmAccess.value
                     })
-                    .eq('id', currentServerId);
-                if (error) throw error;
-                serverSettingsStatus.textContent = 'Server settings saved!';
-                loadServers();
-                serverNameHeader.textContent = serverNameInput.value;
-                if (serverIconInput.files[0]) {
-                    const file = serverIconInput.files[0];
+                    .eq('user_id', userId);
+                localDisplayName = settingsDisplayNameInput.value;
+                localDmAccess = settingsDmAccess.value;
+
+                // Handle profile picture upload
+                const file = settingsProfilePictureInput.files[0];
+                if (file) {
                     const fileExtension = file.name.split('.').pop();
-                    const filePath = `server_icons/${currentServerId}.${fileExtension}`;
+                    const filePath = `${userId}/avatar.${fileExtension}`;
                     const { data: uploadData, error: uploadError } = await supabase.storage
-                        .from('server_icons')
+                        .from('avatars')
                         .upload(filePath, file, { upsert: true });
                     if (uploadError) throw uploadError;
+
                     const { data: publicUrlData } = supabase.storage
-                        .from('server_icons')
+                        .from('avatars')
                         .getPublicUrl(filePath);
+                    const imageUrl = publicUrlData.publicUrl;
+
                     await supabase
-                        .from('servers')
-                        .update({ icon_url: publicUrlData.publicUrl })
-                        .eq('id', currentServerId);
-                    loadServers(); // Reload to show new icon
+                        .from('users')
+                        .update({ profile_picture_url: imageUrl })
+                        .eq('user_id', userId);
+                    localProfilePictureUrl = imageUrl;
                 }
+                updateUserPanel();
+                settingsStatus.textContent = 'Settings saved successfully!';
             } catch (error) {
-                console.error('Error saving server settings:', error);
-                serverSettingsStatus.textContent = 'Failed to save server settings.';
+                console.error('Error saving user settings:', error);
+                settingsStatus.textContent = 'Failed to save settings.';
             }
         });
         
