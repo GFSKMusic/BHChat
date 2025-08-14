@@ -173,19 +173,15 @@
     const userIdDisplay = document.getElementById('user-id-display');
 
     let localStream;
-    let localPeerId;
     let localUsername;
     let roomName;
     const peerConnections = {};
     const peerUsernames = {};
-    const dataChannels = {};
     let currentChatTarget = 'room';
     let userListInterval;
-    let chatSubscription; // Supabase real-time subscription object
-    let dmSubscription; // New subscription for DM notifications
-
-    const signalingServerUrl = 'wss://bhchat.onrender.com';
-    let ws;
+    let chatSubscription;
+    let dmSubscription;
+    let signalingSubscription;
 
     const configuration = {
         iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
@@ -228,7 +224,8 @@
                         authSection.style.display = 'none';
                         mainApp.style.display = 'flex';
                         statusMessage.textContent = `Hello, ${localUsername}! Enter a room name and click Join.`;
-                        setupDmNotificationListener(); // Setup the new listener on login
+                        setupDmNotificationListener();
+                        setupSignalingListener();
                     }
                 } catch (error) {
                     console.error("Login error:", error);
@@ -245,7 +242,6 @@
             if (username && password) {
                 authStatus.textContent = 'Registering user...';
                 try {
-                    // Check if username is already taken
                     const { data: existingUsers, error: checkError } = await supabase
                         .from('users')
                         .select('username')
@@ -264,7 +260,6 @@
                     });
                     if (error) throw error;
                     
-                    // Store username in a separate `users` table for display
                     await supabase.from('users').insert([{ user_id: data.user.id, username }]);
                     
                     authStatus.textContent = 'Registration successful! Please log in.';
@@ -281,27 +276,25 @@
             try {
                 localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
                 addLocalVideoElement();
-                for (const peerId in peerConnections) {
-                    const pc = peerConnections[peerId];
-                    createOffer(pc, peerId);
+                // Find online users in the same room and initiate calls
+                const { data: onlineUsers } = await supabase
+                    .from('online_users')
+                    .select('user_id')
+                    .eq('room_name', roomName)
+                    .neq('user_id', userId);
+
+                for (const user of onlineUsers) {
+                    createPeerConnection(user.user_id, true); // true indicates creating an offer
                 }
                 callButton.style.display = 'none';
                 hangupButton.style.display = 'inline-block';
             } catch (error) {
                 console.error('Error getting user media:', error);
-                const errorBox = document.createElement('div');
-                errorBox.textContent = 'Could not get your camera and microphone. Please check permissions.';
-                errorBox.style.cssText = `
-                    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
-                    padding: 20px; background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb;
-                    border-radius: 5px; z-index: 1000;
-                `;
-                document.body.appendChild(errorBox);
-                setTimeout(() => errorBox.remove(), 5000);
+                alert('Could not get your camera and microphone. Please check permissions.');
             }
         };
     
-        hangupButton.onclick = () => {
+        hangupButton.onclick = async () => {
             if (localStream) {
                 localStream.getTracks().forEach(track => track.stop());
                 localStream = null;
@@ -313,33 +306,61 @@
             videoGrid.innerHTML = '';
             callButton.style.display = 'inline-block';
             hangupButton.style.display = 'none';
+
+            // Signal to others that this user is hanging up
+            const { data: onlineUsers } = await supabase
+                .from('online_users')
+                .select('user_id')
+                .eq('room_name', roomName)
+                .neq('user_id', userId);
+
+            for (const user of onlineUsers) {
+                await supabase.from('webrtc_signals').insert({
+                    room_name: roomName,
+                    sender_id: userId,
+                    target_id: user.user_id,
+                    data: { type: 'hangup' }
+                });
+            }
         };
     
-        joinButton.onclick = () => {
+        joinButton.onclick = async () => {
             roomName = roomInput.value.trim();
             if (roomName && localUsername) {
                 statusMessage.textContent = `Joining room '${roomName}' as '${localUsername}'...`;
-                ws.send(JSON.stringify({ type: 'join_room', room: roomName, username: localUsername, userId: userId }));
+
+                // Update the online_users table
+                await supabase.from('online_users').upsert(
+                    { user_id: userId, room_name: roomName, username: localUsername },
+                    { onConflict: ['user_id'] }
+                );
+
+                statusMessage.textContent = `You are in room '${roomName}' as '${localUsername}'.`;
+                mediaControls.style.display = 'block';
+                
                 updateOnlineUsersList();
+                if (userListInterval) { clearInterval(userListInterval); }
+                userListInterval = setInterval(() => {
+                    updateOnlineUsersList();
+                    // In a real-world scenario, you might have a mechanism to fetch active rooms from a separate table.
+                    // For this example, we'll assume the rooms are defined by users entering them.
+                }, 10000);
+
+                switchChatTarget('room', roomName);
             } else {
-                const errorBox = document.createElement('div');
-                errorBox.textContent = 'Please log in first and enter a valid room name.';
-                errorBox.style.cssText = `
-                    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
-                    padding: 20px; background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb;
-                    border-radius: 5px; z-index: 1000;
-                `;
-                document.body.appendChild(errorBox);
-                setTimeout(() => errorBox.remove(), 5000);
+                alert('Please log in first and enter a valid room name.');
             }
         };
     
-        refreshRoomsButton.onclick = () => {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: 'get_active_rooms' }));
-            } else {
-                activeRoomsList.innerHTML = '<p>Not connected to the server.</p>';
+        refreshRoomsButton.onclick = async () => {
+            // This button now fetches online users and infers rooms from them
+            const { data, error } = await supabase.from('online_users').select('room_name').distinct();
+            if (error) {
+                console.error('Error fetching active rooms:', error);
+                return;
             }
+            const rooms = data.map(r => r.room_name);
+            displayActiveRooms(rooms);
         };
     
         chatInputForm.addEventListener('submit', async (e) => {
@@ -410,84 +431,35 @@
             imageInput.value = '';
         };
     }
-    
-    function connectToSignalingServer() {
-        ws = new WebSocket(signalingServerUrl);
-        ws.onopen = () => {
-            console.log('Connected to signaling server.');
-        };
 
-        ws.onmessage = async (message) => {
-            const data = JSON.parse(message.data);
-            console.log('Received message:', data.type, 'from:', data.sender);
+    function setupSignalingListener() {
+        if (signalingSubscription) {
+            supabase.removeChannel(signalingSubscription);
+        }
 
-            if (data.type === 'registration_success') {
-                authStatus.textContent = 'Registration successful! Please log in.';
-            } else if (data.type === 'login_success') {
-                localUsername = data.username;
-                authSection.style.display = 'none';
-                mainApp.style.display = 'flex';
-                statusMessage.textContent = `Hello, ${localUsername}! Enter a room name and click Join.`;
-            } else if (data.type === 'error') {
-                authStatus.textContent = `Error: ${data.message}`;
-            } else if (data.type === 'room_joined') {
-                localPeerId = data.peerId;
-                statusMessage.textContent = `You are in room '${roomName}' as '${localUsername}'. Waiting for others...`;
-                mediaControls.style.display = 'block';
-                updateOnlineUsersList();
-                if (userListInterval) { clearInterval(userListInterval); }
-                userListInterval = setInterval(() => {
-                    updateOnlineUsersList();
-                    ws.send(JSON.stringify({ type: 'get_active_rooms' }));
-                }, 10000);
-                // Switch to room chat and load history from Supabase
-                switchChatTarget('room', roomName);
-            } else if (data.type === 'peer_joined') {
-                peerUsernames[data.peerId] = data.username;
-                createPeerConnection(data.peerId);
-                updateOnlineUsersList();
-            } else if (data.type === 'offer') {
-                peerUsernames[data.sender] = data.username;
-                createPeerConnection(data.sender);
-                await handleOffer(data);
-            } else if (data.type === 'answer') {
-                peerUsernames[data.sender] = data.username;
-                await handleAnswer(data);
-            } else if (data.type === 'candidate') {
-                await handleCandidate(data);
-            } else if (data.type === 'peer_left') {
-                removePeerConnection(data.peerId);
-                delete peerUsernames[data.peerId];
-                updateOnlineUsersList();
-            } else if (data.type === 'active_rooms_list') {
-                displayActiveRooms(data.rooms);
-            } else if (data.type === 'online_users_list') {
-                for(let peerId in peerUsernames) {
-                    if(!data.users[peerId]) {
-                        delete peerUsernames[peerId];
-                    }
+        signalingSubscription = supabase.channel('webrtc_channel')
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'webrtc_signals', filter: `target_id=eq.${userId}` }, (payload) => {
+                const signal = payload.new;
+                const data = signal.data;
+
+                if (data.type === 'offer') {
+                    handleOffer(signal.sender_id, data);
+                } else if (data.type === 'answer') {
+                    handleAnswer(signal.sender_id, data);
+                } else if (data.type === 'candidate') {
+                    handleCandidate(signal.sender_id, data);
+                } else if (data.type === 'hangup') {
+                    removePeerConnection(signal.sender_id);
                 }
-                for (let peerId in data.users) {
-                    peerUsernames[peerId] = data.users[peerId].username;
-                }
-                displayOnlineUsers(data.users);
-            }
-        };
-
-        ws.onclose = () => {
-            console.log('Disconnected from signaling server.');
-            if (userListInterval) { clearInterval(userListInterval); }
-            if (chatSubscription) { chatSubscription.unsubscribe(); }
-            if (dmSubscription) { supabase.removeChannel(dmSubscription); }
-        };
-        ws.onerror = (error) => { console.error('WebSocket error:', error); };
+            })
+            .subscribe();
     }
-
+    
     function addLocalVideoElement() {
         const videoWrapper = document.createElement('div');
         videoWrapper.className = 'video-wrapper';
         const video = document.createElement('video');
-        video.id = `video-local-${localPeerId}`;
+        video.id = `video-local-${userId}`;
         video.autoplay = true;
         video.playsinline = true;
         video.muted = true;
@@ -500,7 +472,7 @@
         videoGrid.appendChild(videoWrapper);
     }
     
-    function createPeerConnection(peerId) {
+    async function createPeerConnection(peerId, isInitiator) {
         if (peerConnections[peerId]) {
             console.log(`Connection to peer ${peerId} already exists.`);
             return;
@@ -520,69 +492,54 @@
             addRemoteVideoElement(peerId, event.streams[0], remoteUsername);
         };
 
-        pc.onicecandidate = (event) => {
+        pc.onicecandidate = async (event) => {
             if (event.candidate) {
-                ws.send(JSON.stringify({
-                    type: 'candidate',
-                    room: roomName,
-                    targetPeer: peerId,
-                    candidate: event.candidate,
-                }));
+                await supabase.from('webrtc_signals').insert({
+                    room_name: roomName,
+                    sender_id: userId,
+                    target_id: peerId,
+                    data: { type: 'candidate', candidate: event.candidate },
+                });
             }
         };
         
-        const dataChannel = pc.createDataChannel('chat');
-        dataChannels[peerId] = dataChannel;
-        setupDataChannelEvents(dataChannel, peerId);
-
-        pc.ondatachannel = (event) => {
-            dataChannels[peerId] = event.channel;
-            setupDataChannelEvents(dataChannels[peerId], peerId);
-        };
-        
-        if (Object.keys(peerConnections).length === 1 && localStream) {
-            createOffer(pc, peerId);
+        if (isInitiator) {
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+            await supabase.from('webrtc_signals').insert({
+                room_name: roomName,
+                sender_id: userId,
+                target_id: peerId,
+                data: { type: 'offer', description: pc.localDescription },
+            });
         }
     }
 
-    async function createOffer(pc, peerId) {
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        ws.send(JSON.stringify({
-            type: 'offer',
-            room: roomName,
-            targetPeer: peerId,
-            description: pc.localDescription,
-            username: localUsername,
-        }));
-    }
-
-    async function handleOffer(data) {
-        const pc = peerConnections[data.sender];
-        if (!pc) {
-            createPeerConnection(data.sender);
+    async function handleOffer(senderId, data) {
+        if (!peerConnections[senderId]) {
+            await createPeerConnection(senderId, false);
         }
+        const pc = peerConnections[senderId];
         await pc.setRemoteDescription(new RTCSessionDescription(data.description));
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
-        ws.send(JSON.stringify({
-            type: 'answer',
-            room: roomName,
-            targetPeer: data.sender,
-            description: pc.localDescription,
-            username: localUsername,
-        }));
+        await supabase.from('webrtc_signals').insert({
+            room_name: roomName,
+            sender_id: userId,
+            target_id: senderId,
+            data: { type: 'answer', description: pc.localDescription },
+        });
     }
 
-    async function handleAnswer(data) {
-        const pc = peerConnections[data.sender];
-        if (pc) {
+    async function handleAnswer(senderId, data) {
+        const pc = peerConnections[senderId];
+        if (pc && pc.remoteDescription === null) {
             await pc.setRemoteDescription(new RTCSessionDescription(data.description));
         }
     }
 
-    async function handleCandidate(data) {
-        const pc = peerConnections[data.sender];
+    async function handleCandidate(senderId, data) {
+        const pc = peerConnections[senderId];
         if (pc) {
             try {
                 await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
@@ -621,25 +578,13 @@
         videoGrid.appendChild(videoWrapper);
     }
     
-    function setupDataChannelEvents(dc, peerId) {
-        dc.onopen = (event) => { console.log(`Data channel to peer ${peerId} is open.`); };
-        dc.onmessage = (event) => { 
-            const data = JSON.parse(event.data);
-            if (data.type === 'dm_message') {
-                const senderName = data.sender;
-                addMessageToChat(senderName, data.text); 
-            }
-        };
-        dc.onclose = () => { console.log(`Data channel to peer ${peerId} is closed.`); };
-    }
-
     function addMessageToChat(sender, message, isMyMessage = false) {
         const messageElement = document.createElement('div');
         messageElement.textContent = `${sender}: ${message}`;
         messageElement.classList.add('message');
         if (isMyMessage) { messageElement.classList.add('my-message'); }
         chatbox.appendChild(messageElement);
-        chatbox.scrollTop = chatbox.scrollHeight; // Auto-scroll to the latest message
+        chatbox.scrollTop = chatbox.scrollHeight;
     }
 
     function addImageToChat(sender, imageData, isMyMessage = false) {
@@ -658,76 +603,70 @@
         messageElement.appendChild(imageElement);
 
         chatbox.appendChild(messageElement);
-        chatbox.scrollTop = chatbox.scrollHeight; // Auto-scroll to the latest message
+        chatbox.scrollTop = chatbox.scrollHeight;
     }
 
     function displayActiveRooms(rooms) {
         activeRoomsList.innerHTML = '';
-        if (Object.keys(rooms).length === 0) {
+        if (rooms.length === 0) {
             activeRoomsList.innerHTML = '<p>No active rooms found.</p>';
             return;
         }
 
         const roomListElement = document.createElement('ul');
-        for (const roomName in rooms) {
-            const roomData = rooms[roomName];
+        rooms.forEach(roomName => {
             const listItem = document.createElement('li');
-            listItem.textContent = `Room: ${roomName} | Active Users: ${roomData.count}`;
-            
-            const userList = document.createElement('ul');
-            roomData.users.forEach(user => {
-                const userItem = document.createElement('li');
-                userItem.textContent = user;
-                userList.appendChild(userItem);
-            });
-            listItem.appendChild(userList);
-
+            listItem.textContent = `Room: ${roomName}`;
             roomListElement.appendChild(listItem);
-        }
+        });
         activeRoomsList.appendChild(roomListElement);
     }
 
-    function updateOnlineUsersList() {
-        if (ws && ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ type: 'get_online_users', room: roomName }));
+    async function updateOnlineUsersList() {
+        const { data: users, error } = await supabase
+            .from('online_users')
+            .select('*')
+            .eq('room_name', roomName);
+        
+        if (error) {
+            console.error('Error fetching online users:', error);
+            return;
         }
-    }
 
-    function displayOnlineUsers(users) {
         onlineUsersList.innerHTML = '';
+        
+        // Add room chat option
         const roomChatListItem = document.createElement('li');
         roomChatListItem.textContent = `Room: ${roomName}`;
         roomChatListItem.style.cursor = 'pointer';
         roomChatListItem.onclick = () => {
             currentChatTarget = 'room';
             chatTitle.textContent = `Room Chat: ${roomName}`;
-            // Remove notification from this item if it existed
             roomChatListItem.classList.remove('dm-notification');
             switchChatTarget('room', roomName);
         };
         onlineUsersList.appendChild(roomChatListItem);
 
-        for (const peerId in users) {
-            const user = users[peerId];
-            if (user.userId !== userId) {
+        // Add users for DM
+        users.forEach(user => {
+            if (user.user_id !== userId) {
                 const listItem = document.createElement('li');
                 listItem.textContent = user.username;
-                listItem.setAttribute('data-user-id', user.userId);
+                listItem.setAttribute('data-user-id', user.user_id);
                 listItem.style.cursor = 'pointer';
                 listItem.onclick = () => {
-                    currentChatTarget = user.userId;
+                    currentChatTarget = user.user_id;
                     chatTitle.textContent = `DM with ${user.username}`;
-                    // Remove notification from this item
                     listItem.classList.remove('dm-notification');
-                    switchChatTarget('dm', user.userId);
+                    switchChatTarget('dm', user.user_id);
                 };
                 onlineUsersList.appendChild(listItem);
             }
-        }
+            peerUsernames[user.user_id] = user.username;
+        });
     }
-    
+
     async function switchChatTarget(targetType, targetId) {
-        // Unsubscribe from previous listener if it exists
         if (chatSubscription) {
             await supabase.removeChannel(chatSubscription);
         }
@@ -819,16 +758,13 @@
             supabase.removeChannel(dmSubscription);
         }
         
-        // Listen for all new DM messages
         dmSubscription = supabase
             .channel('dm-notifications')
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'dms' }, (payload) => {
                 const newDm = payload.new;
-                // Check if the current user is the recipient of the new DM
                 if (newDm.dm_path.includes(userId) && newDm.sender_id !== userId) {
                     const senderId = newDm.sender_id;
                     const dmUserElement = onlineUsersList.querySelector(`[data-user-id="${senderId}"]`);
-                    // Only add notification if the user is not currently viewing that DM chat
                     if (dmUserElement && currentChatTarget !== senderId) {
                         dmUserElement.classList.add('dm-notification');
                     }
@@ -837,14 +773,10 @@
             .subscribe();
     }
 
-    // Call setupEventListeners() once the page loads
     document.addEventListener('DOMContentLoaded', () => {
         setupEventListeners();
-        connectToSignalingServer();
-        // Check for an existing session on page load
         supabase.auth.getSession().then(({ data: { session } }) => {
             if (session) {
-                // If a session exists, retrieve the user's details and show the main app
                 const user = session.user;
                 supabase.from('users').select('username').eq('user_id', user.id).single().then(({ data: userProfile }) => {
                     if (userProfile) {
@@ -855,6 +787,7 @@
                         mainApp.style.display = 'flex';
                         statusMessage.textContent = `Hello, ${localUsername}! Enter a room name and click Join.`;
                         setupDmNotificationListener();
+                        setupSignalingListener();
                     }
                 });
             }
