@@ -217,26 +217,41 @@
 
         #chat-input-form {
             display: flex;
+            align-items: center;
             gap: 10px;
             margin-top: 10px;
+            background-color: var(--tertiary-bg);
+            padding: 8px;
+            border-radius: 8px;
         }
 
         #chat-input {
             flex-grow: 1;
             padding: 10px;
             border-radius: 5px;
-            border: 1px solid #4a4a4a;
-            background-color: var(--tertiary-bg);
+            border: none;
+            background-color: transparent;
             color: var(--white-text);
+            outline: none;
         }
 
-        #send-button, #upload-image-button {
-            padding: 10px 20px;
+        #chat-input-form button {
+            width: 40px;
+            height: 40px;
             border-radius: 5px;
             border: none;
-            background-color: var(--accent-blue);
-            color: var(--white-text);
+            background-color: transparent;
+            color: var(--light-grey-text);
+            font-size: 1.2rem;
             cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        #chat-input-form button:hover {
+            color: var(--white-text);
+            background-color: rgba(255, 255, 255, 0.1);
         }
 
         .message-wrapper {
@@ -510,10 +525,12 @@
             <div class="chat-container">
                 <div id="chatbox"></div>
                 <form id="chat-input-form">
+                    <button type="button" id="plus-button">+</button>
                     <input type="file" id="image-input" accept="image/*" style="display:none;">
-                    <button type="button" id="upload-image-button">🖼️</button>
                     <input type="text" id="chat-input" placeholder="Type a message..." autocomplete="off">
-                    <button type="submit" id="send-button">Send</button>
+                    <button type="button" id="emoji-button">😊</button>
+                    <button type="button" id="gif-button">GIF</button>
+                    <button type="button" id="sticker-button">STICKER</button>
                 </form>
             </div>
         </div>
@@ -612,8 +629,11 @@
     const chatInputForm = document.getElementById('chat-input-form');
     const chatTitle = document.getElementById('chat-title');
     const serverNameHeader = document.getElementById('server-name-header');
-    const uploadImageButton = document.getElementById('upload-image-button');
+    const plusButton = document.getElementById('plus-button');
     const imageInput = document.getElementById('image-input');
+    const emojiButton = document.getElementById('emoji-button');
+    const gifButton = document.getElementById('gif-button');
+    const stickerButton = document.getElementById('sticker-button');
     const addServerIcon = document.getElementById('add-server-icon');
     const joinServerIcon = document.getElementById('join-server-icon');
     const directMessagesIcon = document.getElementById('direct-messages-icon');
@@ -757,6 +777,7 @@
                     .select();
                 if (error) {
                     console.error("Error creating server:", error);
+                    // Use a custom modal or inline message instead of alert
                     alert("Failed to create server. It might already exist.");
                 } else {
                     const newServer = data[0];
@@ -777,6 +798,7 @@
                     .single();
                 
                 if (error || !server) {
+                    // Use a custom modal or inline message instead of alert
                     alert("Invalid invite code.");
                     return;
                 }
@@ -789,6 +811,7 @@
                     .single();
                 
                 if (member) {
+                    // Use a custom modal or inline message instead of alert
                     alert("You are already a member of this server.");
                     return;
                 }
@@ -852,6 +875,7 @@
 
         addChannelButton.onclick = async () => {
             if (!currentServerId || currentServerId === 'direct-messages') {
+                // Use a custom modal or inline message instead of alert
                 alert("Please select a server first.");
                 return;
             }
@@ -862,6 +886,7 @@
                     .insert({ server_id: currentServerId, name: newChannelName });
                 if (error) {
                     console.error("Error creating channel:", error);
+                    // Use a custom modal or inline message instead of alert
                     alert("Failed to create channel. It might already exist in this server.");
                 } else {
                     joinServer(currentServerId);
@@ -1030,9 +1055,24 @@
                 chatInput.value = '';
             }
         });
-    
-        uploadImageButton.onclick = () => {
+
+        plusButton.onclick = () => {
             imageInput.click();
+        };
+        
+        gifButton.onclick = () => {
+            console.log('GIF button clicked. Functionality not yet implemented.');
+            // Here you would open a modal with a GIF search/selection tool
+        };
+        
+        stickerButton.onclick = () => {
+            console.log('Sticker button clicked. Functionality not yet implemented.');
+            // Here you would open a modal with a sticker selection tool
+        };
+
+        emojiButton.onclick = () => {
+            console.log('Emoji button clicked. Functionality not yet implemented.');
+            // Here you would open an emoji picker
         };
     
         imageInput.onchange = async (event) => {
@@ -1089,17 +1129,19 @@
 
     async function showServerSettings() {
         if (!currentServerId || currentServerId === 'direct-messages') {
+            // Use a custom modal or inline message instead of alert
             alert('Please select a server first.');
             return;
         }
         
-        const { data, error } = await supabase
+        const { data: server, error: serverError } = await supabase
             .from('servers')
             .select('owner_id, room_name, is_public')
             .eq('id', currentServerId)
             .single();
 
         if (error || !data || data.owner_id !== userId) {
+            // Use a custom modal or inline message instead of alert
             alert('You do not have permission to change these settings.');
             return;
         }
@@ -1143,6 +1185,7 @@
     
     async function addFriend(targetUserId) {
         await supabase.from('friends').insert({ user_id_1: userId, user_id_2: targetUserId });
+        // Use a custom modal or inline message instead of alert
         alert(`${profileDisplayName.textContent} added as a friend!`);
         userProfileModal.style.display = 'none';
     }
@@ -1152,6 +1195,7 @@
             .from('friends')
             .delete()
             .or(`and(user_id_1.eq.${userId},user_id_2.eq.${targetUserId}),and(user_id_1.eq.${targetUserId},user_id_2.eq.${userId})`);
+        // Use a custom modal or inline message instead of alert
         alert(`${profileDisplayName.textContent} removed from friends.`);
         userProfileModal.style.display = 'none';
         if (currentChatTarget.type === 'dm') {
