@@ -3,81 +3,248 @@
 <head>
     <title>Harmony</title>
     <style>
-        body { font-family: sans-serif; background-color: #f0f2f5; margin: 0; padding: 20px; display: flex; justify-content: center; }
-        .container { width: 90%; max-width: 1200px; display: flex; flex-direction: column; gap: 20px; }
-        #controls { text-align: center; margin-bottom: 20px; }
-        #room-input { padding: 10px; border: 1px solid #ddd; border-radius: 5px; margin-right: 10px; }
-        #join-button, #refresh-rooms-button { padding: 10px 20px; font-size: 16px; background-color: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; }
-        #join-button:hover, #refresh-rooms-button:hover { background-color: #0056b3; }
-        .control-buttons { margin-top: 10px; }
-        .control-buttons button { padding: 8px 16px; font-size: 14px; margin: 0 5px; border-radius: 5px; border: 1px solid #ccc; cursor: pointer; }
-        .video-container { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
-        .video-wrapper { position: relative; width: 45%; max-width: 500px; min-width: 300px; background-color: #000; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
-        video { width: 100%; height: auto; display: block; background-color: #000; }
-        .video-label { position: absolute; bottom: 10px; left: 10px; color: white; background-color: rgba(0,0,0,0.5); padding: 5px 10px; border-radius: 5px; }
-        .chat-section { display: flex; gap: 20px; }
-        .sidebar { width: 250px; background-color: white; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); padding: 10px; }
-        .chat-container { flex-grow: 1; background-color: white; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); padding: 20px; display: flex; flex-direction: column; height: 400px; }
-        #chatbox { flex-grow: 1; overflow-y: auto; border-bottom: 1px solid #ddd; margin-bottom: 10px; padding: 5px; }
-        #chat-input-form { display: flex; }
-        #chat-input { flex-grow: 1; padding: 10px; border: 1px solid #ddd; border-radius: 5px; margin-right: 10px; }
-        #send-button { padding: 10px 20px; background-color: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; }
-        #send-button:hover { background-color: #0056b3; }
-        #upload-image-button { padding: 10px; border: 1px solid #ddd; border-radius: 5px; margin-right: 10px; }
-        .message { margin: 5px 0; }
-        .my-message { text-align: right; color: #007bff; }
-        .active-rooms-container { margin-top: 20px; background-color: white; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); padding: 20px; }
-        #auth-section { 
-            display: flex; 
-            flex-direction: column; 
-            gap: 15px; 
-            align-items: center; 
-            padding: 20px; 
-            border: 1px solid #ddd; 
-            border-radius: 8px; 
-            background-color: white; 
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1); 
-            max-width: 400px;
-            margin: 50px auto;
+        :root {
+            --primary-bg: #2b2d31;
+            --secondary-bg: #313338;
+            --tertiary-bg: #383a40;
+            --accent-blue: #007bff;
+            --white-text: #ffffff;
+            --light-grey-text: #b1b5b9;
         }
+
+        body {
+            font-family: sans-serif;
+            margin: 0;
+            background-color: var(--secondary-bg);
+            color: var(--white-text);
+            display: flex;
+        }
+
+        #auth-section {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            height: 100vh;
+            padding: 20px;
+            background-color: var(--secondary-bg);
+        }
+
+        #auth-section h2, #auth-section p {
+            color: var(--white-text);
+        }
+
         #auth-section input, #auth-section button {
             width: 100%;
+            max-width: 300px;
             padding: 10px;
             border-radius: 5px;
-            border: 1px solid #ccc;
+            border: 1px solid #4a4a4a;
+            background-color: var(--tertiary-bg);
+            color: var(--white-text);
         }
+
         #auth-section button {
-            background-color: #007bff;
-            color: white;
+            background-color: var(--accent-blue);
             border: none;
             cursor: pointer;
         }
-        #main-app { display: none; }
-        .password-container {
-            position: relative;
+        
+        #main-app { 
+            display: none;
             width: 100%;
+            height: 100vh;
+        }
+
+        .server-sidebar {
+            width: 72px;
+            background-color: var(--primary-bg);
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            overflow-y: auto;
+        }
+
+        .server-icon {
+            width: 50px;
+            height: 50px;
+            background-color: var(--tertiary-bg);
+            border-radius: 50%;
             display: flex;
             align-items: center;
-        }
-        #toggle-password {
-            position: absolute;
-            right: 10px;
+            justify-content: center;
+            font-size: 1.2rem;
+            font-weight: bold;
             cursor: pointer;
-            -webkit-user-select: none;
-            -moz-user-select: none;
-            -ms-user-select: none;
-            user-select: none;
-            color: #555;
-            font-size: 12px;
+            color: var(--light-grey-text);
+            transition: border-radius 0.2s, background-color 0.2s;
+            position: relative;
         }
-        #user-id-display {
-            font-size: 10px;
-            word-break: break-all;
+
+        .server-icon img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 50%;
+        }
+
+        .server-icon:hover {
+            border-radius: 35%;
+            background-color: var(--accent-blue);
+        }
+
+        .server-icon.active {
+            border-radius: 35%;
+            background-color: var(--accent-blue);
+        }
+
+        .server-icon.active::before {
+            content: '';
+            position: absolute;
+            left: -18px;
+            height: 80%;
+            width: 6px;
+            background-color: var(--white-text);
+            border-radius: 0 4px 4px 0;
+        }
+
+        .main-content {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .top-bar {
+            background-color: var(--secondary-bg);
+            padding: 10px 20px;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .top-bar-tab {
+            padding: 8px 12px;
+            background-color: var(--tertiary-bg);
+            border-radius: 8px;
+            cursor: pointer;
+            color: var(--light-grey-text);
+            transition: background-color 0.2s, color 0.2s;
+        }
+
+        .top-bar-tab:hover {
+            background-color: var(--accent-blue);
+            color: var(--white-text);
+        }
+
+        .top-bar-tab.active {
+            background-color: var(--accent-blue);
+            color: var(--white-text);
+        }
+
+        .chat-container {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            background-color: var(--secondary-bg);
+            padding: 20px;
+        }
+
+        #chatbox {
+            flex-grow: 1;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            padding: 10px;
+        }
+
+        #chat-input-form {
+            display: flex;
+            gap: 10px;
             margin-top: 10px;
         }
-        .dm-notification {
+
+        #chat-input {
+            flex-grow: 1;
+            padding: 10px;
+            border-radius: 5px;
+            border: 1px solid #4a4a4a;
+            background-color: var(--tertiary-bg);
+            color: var(--white-text);
+        }
+
+        #send-button, #upload-image-button {
+            padding: 10px 20px;
+            border-radius: 5px;
+            border: none;
+            background-color: var(--accent-blue);
+            color: var(--white-text);
+            cursor: pointer;
+        }
+
+        .message-wrapper {
+            position: relative;
+        }
+
+        .message {
+            padding: 8px 12px;
+            background-color: var(--tertiary-bg);
+            border-radius: 8px;
+            max-width: 70%;
+            word-wrap: break-word;
+            position: relative;
+        }
+
+        .message.my-message {
+            background-color: #5865f2;
+            align-self: flex-end;
+        }
+
+        .message-sender {
+            font-size: 0.8em;
+            color: var(--light-grey-text);
+        }
+
+        .message.my-message .message-sender {
+            display: none;
+        }
+
+        .message-content {
+            margin-top: 5px;
+        }
+
+        .message-image {
+            max-width: 200px;
+            border-radius: 5px;
+        }
+
+        .delete-button {
+            position: absolute;
+            top: -10px;
+            right: -10px;
+            background: #dc3545;
+            color: white;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            border: none;
+            font-size: 12px;
+            cursor: pointer;
+            display: none;
+        }
+        
+        .message-wrapper:hover .delete-button {
+            display: block;
+        }
+
+        .server-list-header {
+            color: var(--white-text);
             font-weight: bold;
-            color: red;
+            text-align: center;
+            margin-bottom: 5px;
         }
     </style>
 </head>
@@ -95,31 +262,22 @@
     <p id="auth-status"></p>
 </div>
 
-<div id="main-app" class="container">
-    <h1 style="text-align: center;">Harmony</h1>
-
-    <div id="controls">
-        <p>Your User ID: <span id="user-id-display"></span></p>
-        <input type="text" id="room-input" placeholder="Enter Room Name" value="default-room">
-        <button id="join-button">Join Room</button>
-        <button id="refresh-rooms-button">Refresh Active Rooms</button>
-        <p id="status-message">You are not in a room.</p>
-        <div id="media-controls" style="display:none;" class="control-buttons">
-            <button id="call-button">Start Call</button>
-            <button id="hangup-button" style="display:none;">Hang Up</button>
-        </div>
+<div id="main-app">
+    <div class="server-sidebar" id="server-sidebar">
+        <h3 class="server-list-header">Servers</h3>
+        <div class="server-icon" id="add-server-icon">+</div>
     </div>
     
-    <div id="video-grid" class="video-container"></div>
-
-    <div class="chat-section">
-        <div class="sidebar">
-            <h3>Online Users</h3>
-            <ul id="online-users-list"></ul>
+    <div class="main-content">
+        <div class="top-bar">
+            <h2 id="chat-title"></h2>
+            <div id="top-bar-tabs">
+                <div class="top-bar-tab active" id="channels-tab">Channels</div>
+                <div class="top-bar-tab" id="users-tab">Users</div>
+            </div>
         </div>
 
         <div class="chat-container">
-            <h2 id="chat-title">Room Chat</h2>
             <div id="chatbox"></div>
             <form id="chat-input-form">
                 <input type="file" id="image-input" accept="image/*" style="display:none;">
@@ -129,18 +287,11 @@
             </form>
         </div>
     </div>
-
-    <div class="active-rooms-container">
-        <h2>Active Rooms</h2>
-        <div id="active-rooms-list"></div>
-    </div>
 </div>
 
 <script type="module">
     import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.7/+esm';
 
-    // Supabase Initialization
-    // *** IMPORTANT: Replace these placeholders with your actual Supabase project URL and anon key ***
     const SUPABASE_URL = 'https://pepvpyfgpyifqlepgvbp.supabase.co';
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlcHZweWZncHlpZnFsZXBndmJwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUwNTgyODMsImV4cCI6MjA3MDYzNDI4M30.uFkZZ9bsMrc5Vhr8rVsIhNRKI_HpO_Zjp351cc70nLM';
     const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -153,41 +304,23 @@
     const registerButton = document.getElementById('register-button');
     const authStatus = document.getElementById('auth-status');
     const togglePassword = document.getElementById('toggle-password');
-
-    const videoGrid = document.getElementById('video-grid');
+    const serverSidebar = document.getElementById('server-sidebar');
     const chatbox = document.getElementById('chatbox');
     const chatInput = document.getElementById('chat-input');
     const chatInputForm = document.getElementById('chat-input-form');
-    const roomInput = document.getElementById('room-input');
-    const joinButton = document.getElementById('join-button');
-    const statusMessage = document.getElementById('status-message');
-    const mediaControls = document.getElementById('media-controls');
-    const callButton = document.getElementById('call-button');
-    const hangupButton = document.getElementById('hangup-button');
-    const imageInput = document.getElementById('image-input');
-    const uploadImageButton = document.getElementById('upload-image-button');
-    const activeRoomsList = document.getElementById('active-rooms-list');
-    const refreshRoomsButton = document.getElementById('refresh-rooms-button');
-    const onlineUsersList = document.getElementById('online-users-list');
     const chatTitle = document.getElementById('chat-title');
-    const userIdDisplay = document.getElementById('user-id-display');
+    const uploadImageButton = document.getElementById('upload-image-button');
+    const imageInput = document.getElementById('image-input');
+    const topBarTabs = document.getElementById('top-bar-tabs');
+    const channelsTab = document.getElementById('channels-tab');
+    const usersTab = document.getElementById('users-tab');
+    const addServerIcon = document.getElementById('add-server-icon');
 
-    let localStream;
     let localUsername;
-    let roomName;
-    const peerConnections = {};
-    const peerUsernames = {};
-    let currentChatTarget = 'room';
-    let userListInterval;
-    let chatSubscription;
-    let dmSubscription;
-    let signalingSubscription;
-
-    const configuration = {
-        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
-    };
-
     let userId;
+    let currentRoomName;
+    let currentChatTarget = { type: 'room', id: '' };
+    let chatSubscription;
 
     function setupEventListeners() {
         togglePassword.addEventListener('click', function() {
@@ -220,12 +353,10 @@
                     } else {
                         localUsername = userProfile.username;
                         userId = data.user.id;
-                        userIdDisplay.textContent = userId;
                         authSection.style.display = 'none';
                         mainApp.style.display = 'flex';
-                        statusMessage.textContent = `Hello, ${localUsername}! Enter a room name and click Join.`;
+                        loadServers();
                         setupDmNotificationListener();
-                        setupSignalingListener();
                     }
                 } catch (error) {
                     console.error("Login error:", error);
@@ -271,112 +402,36 @@
                 authStatus.textContent = 'Please enter both username and password.';
             }
         };
-    
-        callButton.onclick = async () => {
-            try {
-                localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-                addLocalVideoElement();
-                // Find online users in the same room and initiate calls
-                const { data: onlineUsers } = await supabase
-                    .from('online_users')
-                    .select('user_id')
-                    .eq('room_name', roomName)
-                    .neq('user_id', userId);
 
-                for (const user of onlineUsers) {
-                    createPeerConnection(user.user_id, true); // true indicates creating an offer
+        addServerIcon.onclick = async () => {
+            const newRoomName = prompt("Enter a new server name:");
+            if (newRoomName) {
+                const { error } = await supabase
+                    .from('servers')
+                    .insert({ room_name: newRoomName, owner_id: userId });
+                if (error) {
+                    console.error("Error creating server:", error);
+                    alert("Failed to create server. It might already exist.");
+                } else {
+                    loadServers();
                 }
-                callButton.style.display = 'none';
-                hangupButton.style.display = 'inline-block';
-            } catch (error) {
-                console.error('Error getting user media:', error);
-                alert('Could not get your camera and microphone. Please check permissions.');
             }
         };
-    
-        hangupButton.onclick = async () => {
-            if (localStream) {
-                localStream.getTracks().forEach(track => track.stop());
-                localStream = null;
-            }
-            for (const peerId in peerConnections) {
-                peerConnections[peerId].close();
-                delete peerConnections[peerId];
-            }
-            videoGrid.innerHTML = '';
-            callButton.style.display = 'inline-block';
-            hangupButton.style.display = 'none';
-
-            // Signal to others that this user is hanging up
-            const { data: onlineUsers } = await supabase
-                .from('online_users')
-                .select('user_id')
-                .eq('room_name', roomName)
-                .neq('user_id', userId);
-
-            for (const user of onlineUsers) {
-                await supabase.from('webrtc_signals').insert({
-                    room_name: roomName,
-                    sender_id: userId,
-                    target_id: user.user_id,
-                    data: { type: 'hangup' }
-                });
-            }
-        };
-    
-        joinButton.onclick = async () => {
-            roomName = roomInput.value.trim();
-            if (roomName && localUsername) {
-                statusMessage.textContent = `Joining room '${roomName}' as '${localUsername}'...`;
-
-                // Update the online_users table
-                await supabase.from('online_users').upsert(
-                    { user_id: userId, room_name: roomName, username: localUsername },
-                    { onConflict: ['user_id'] }
-                );
-
-                statusMessage.textContent = `You are in room '${roomName}' as '${localUsername}'.`;
-                mediaControls.style.display = 'block';
-                
-                updateOnlineUsersList();
-                if (userListInterval) { clearInterval(userListInterval); }
-                userListInterval = setInterval(() => {
-                    updateOnlineUsersList();
-                    // In a real-world scenario, you might have a mechanism to fetch active rooms from a separate table.
-                    // For this example, we'll assume the rooms are defined by users entering them.
-                }, 10000);
-
-                switchChatTarget('room', roomName);
-            } else {
-                alert('Please log in first and enter a valid room name.');
-            }
-        };
-    
-        refreshRoomsButton.onclick = async () => {
-            // This button now fetches online users and infers rooms from them
-            const { data, error } = await supabase.from('online_users').select('room_name').distinct();
-            if (error) {
-                console.error('Error fetching active rooms:', error);
-                return;
-            }
-            const rooms = data.map(r => r.room_name);
-            displayActiveRooms(rooms);
-        };
-    
+        
         chatInputForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             const message = chatInput.value.trim();
             if (message) {
-                if (currentChatTarget === 'room') {
+                if (currentChatTarget.type === 'room') {
                     await supabase.from('room_messages').insert({
-                        room_name: roomName,
+                        room_name: currentChatTarget.id,
                         sender_id: userId,
                         sender_name: localUsername,
                         type: 'text',
                         content: message,
                     });
                 } else {
-                    const targetUserId = currentChatTarget;
+                    const targetUserId = currentChatTarget.id;
                     const smallerId = userId < targetUserId ? userId : targetUserId;
                     const largerId = userId > targetUserId ? userId : targetUserId;
                     const dmPath = smallerId + '-' + largerId;
@@ -403,16 +458,16 @@
                 const reader = new FileReader();
                 reader.onload = async (e) => {
                     const imageData = e.target.result;
-                    if (currentChatTarget === 'room') {
+                    if (currentChatTarget.type === 'room') {
                         await supabase.from('room_messages').insert({
-                            room_name: roomName,
+                            room_name: currentChatTarget.id,
                             sender_id: userId,
                             sender_name: localUsername,
                             type: 'image',
                             content: imageData,
                         });
                     } else {
-                        const targetUserId = currentChatTarget;
+                        const targetUserId = currentChatTarget.id;
                         const smallerId = userId < targetUserId ? userId : targetUserId;
                         const largerId = userId > targetUserId ? userId : targetUserId;
                         const dmPath = smallerId + '-' + largerId;
@@ -430,251 +485,122 @@
             }
             imageInput.value = '';
         };
+
+        channelsTab.onclick = () => {
+            channelsTab.classList.add('active');
+            usersTab.classList.remove('active');
+            switchChatTarget('room', currentRoomName);
+        };
+
+        usersTab.onclick = () => {
+            usersTab.classList.add('active');
+            channelsTab.classList.remove('active');
+            loadOnlineUsersAsTabs();
+        };
     }
 
-    function setupSignalingListener() {
-        if (signalingSubscription) {
-            supabase.removeChannel(signalingSubscription);
-        }
+    async function loadServers() {
+        const { data: servers, error } = await supabase
+            .from('servers')
+            .select('*');
 
-        signalingSubscription = supabase.channel('webrtc_channel')
-            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'webrtc_signals', filter: `target_id=eq.${userId}` }, (payload) => {
-                const signal = payload.new;
-                const data = signal.data;
-
-                if (data.type === 'offer') {
-                    handleOffer(signal.sender_id, data);
-                } else if (data.type === 'answer') {
-                    handleAnswer(signal.sender_id, data);
-                } else if (data.type === 'candidate') {
-                    handleCandidate(signal.sender_id, data);
-                } else if (data.type === 'hangup') {
-                    removePeerConnection(signal.sender_id);
-                }
-            })
-            .subscribe();
-    }
-    
-    function addLocalVideoElement() {
-        const videoWrapper = document.createElement('div');
-        videoWrapper.className = 'video-wrapper';
-        const video = document.createElement('video');
-        video.id = `video-local-${userId}`;
-        video.autoplay = true;
-        video.playsinline = true;
-        video.muted = true;
-        video.srcObject = localStream;
-        const label = document.createElement('div');
-        label.className = 'video-label';
-        label.textContent = localUsername;
-        videoWrapper.appendChild(video);
-        videoWrapper.appendChild(label);
-        videoGrid.appendChild(videoWrapper);
-    }
-    
-    async function createPeerConnection(peerId, isInitiator) {
-        if (peerConnections[peerId]) {
-            console.log(`Connection to peer ${peerId} already exists.`);
+        if (error) {
+            console.error("Error fetching servers:", error);
             return;
         }
 
-        const pc = new RTCPeerConnection(configuration);
-        peerConnections[peerId] = pc;
-
-        if (localStream) {
-            localStream.getTracks().forEach(track => {
-                pc.addTrack(track, localStream);
-            });
-        }
-
-        pc.ontrack = (event) => {
-            const remoteUsername = peerUsernames[peerId] || `Peer ${peerId}`;
-            addRemoteVideoElement(peerId, event.streams[0], remoteUsername);
-        };
-
-        pc.onicecandidate = async (event) => {
-            if (event.candidate) {
-                await supabase.from('webrtc_signals').insert({
-                    room_name: roomName,
-                    sender_id: userId,
-                    target_id: peerId,
-                    data: { type: 'candidate', candidate: event.candidate },
-                });
+        serverSidebar.innerHTML = '<h3 class="server-list-header">Servers</h3><div class="server-icon" id="add-server-icon">+</div>';
+        servers.forEach(server => {
+            const serverIcon = document.createElement('div');
+            serverIcon.className = 'server-icon';
+            if (server.image_url) {
+                const img = document.createElement('img');
+                img.src = server.image_url;
+                serverIcon.appendChild(img);
+            } else {
+                serverIcon.textContent = server.room_name.substring(0, 2).toUpperCase();
             }
-        };
+            serverIcon.title = server.room_name;
+            serverIcon.onclick = () => joinServer(server.room_name);
+            serverSidebar.appendChild(serverIcon);
+        });
+
+        if (servers.length > 0) {
+            joinServer(servers[0].room_name);
+        }
         
-        if (isInitiator) {
-            const offer = await pc.createOffer();
-            await pc.setLocalDescription(offer);
-            await supabase.from('webrtc_signals').insert({
-                room_name: roomName,
-                sender_id: userId,
-                target_id: peerId,
-                data: { type: 'offer', description: pc.localDescription },
-            });
-        }
+        // Re-attach listener to the new add server icon
+        document.getElementById('add-server-icon').onclick = addServerIcon.onclick;
     }
 
-    async function handleOffer(senderId, data) {
-        if (!peerConnections[senderId]) {
-            await createPeerConnection(senderId, false);
+    async function joinServer(roomName) {
+        if (currentRoomName) {
+            await supabase.from('online_users').delete().eq('user_id', userId);
         }
-        const pc = peerConnections[senderId];
-        await pc.setRemoteDescription(new RTCSessionDescription(data.description));
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        await supabase.from('webrtc_signals').insert({
-            room_name: roomName,
-            sender_id: userId,
-            target_id: senderId,
-            data: { type: 'answer', description: pc.localDescription },
-        });
-    }
+        currentRoomName = roomName;
+        currentChatTarget = { type: 'room', id: roomName };
+        chatTitle.textContent = `# ${roomName}`;
 
-    async function handleAnswer(senderId, data) {
-        const pc = peerConnections[senderId];
-        if (pc && pc.remoteDescription === null) {
-            await pc.setRemoteDescription(new RTCSessionDescription(data.description));
+        await supabase.from('online_users').upsert(
+            { user_id: userId, room_name: currentRoomName, username: localUsername },
+            { onConflict: ['user_id'] }
+        );
+
+        // Update active server icon
+        document.querySelectorAll('.server-icon').forEach(icon => icon.classList.remove('active'));
+        const activeIcon = Array.from(serverSidebar.children).find(el => el.title === roomName);
+        if (activeIcon) {
+            activeIcon.classList.add('active');
         }
-    }
 
-    async function handleCandidate(senderId, data) {
-        const pc = peerConnections[senderId];
-        if (pc) {
-            try {
-                await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
-            } catch (e) {
-                console.error('Error adding received ICE candidate', e);
-            }
-        }
-    }
-
-    function removePeerConnection(peerId) {
-        if (peerConnections[peerId]) {
-            peerConnections[peerId].close();
-            delete peerConnections[peerId];
-        }
-        const videoElement = document.getElementById(`video-${peerId}`);
-        if (videoElement) {
-            videoElement.parentNode.remove();
-        }
-    }
-
-    function addRemoteVideoElement(peerId, stream, username) {
-        if (document.getElementById(`video-${peerId}`)) return;
-
-        const videoWrapper = document.createElement('div');
-        videoWrapper.className = 'video-wrapper';
-        const video = document.createElement('video');
-        video.id = `video-${peerId}`;
-        video.autoplay = true;
-        video.playsinline = true;
-        video.srcObject = stream;
-        const label = document.createElement('div');
-        label.className = 'video-label';
-        label.textContent = username;
-        videoWrapper.appendChild(video);
-        videoWrapper.appendChild(label);
-        videoGrid.appendChild(videoWrapper);
+        channelsTab.classList.add('active');
+        usersTab.classList.remove('active');
+        switchChatTarget('room', roomName);
     }
     
-    function addMessageToChat(sender, message, isMyMessage = false) {
-        const messageElement = document.createElement('div');
-        messageElement.textContent = `${sender}: ${message}`;
-        messageElement.classList.add('message');
-        if (isMyMessage) { messageElement.classList.add('my-message'); }
-        chatbox.appendChild(messageElement);
-        chatbox.scrollTop = chatbox.scrollHeight;
-    }
-
-    function addImageToChat(sender, imageData, isMyMessage = false) {
-        const messageElement = document.createElement('div');
-        messageElement.classList.add('message');
-        if (isMyMessage) { messageElement.classList.add('my-message'); }
-
-        const senderElement = document.createElement('span');
-        senderElement.textContent = `${sender}: `;
-        messageElement.appendChild(senderElement);
-
-        const imageElement = document.createElement('img');
-        imageElement.src = imageData;
-        imageElement.style.maxWidth = '200px';
-        imageElement.style.display = 'block';
-        messageElement.appendChild(imageElement);
-
-        chatbox.appendChild(messageElement);
-        chatbox.scrollTop = chatbox.scrollHeight;
-    }
-
-    function displayActiveRooms(rooms) {
-        activeRoomsList.innerHTML = '';
-        if (rooms.length === 0) {
-            activeRoomsList.innerHTML = '<p>No active rooms found.</p>';
-            return;
-        }
-
-        const roomListElement = document.createElement('ul');
-        rooms.forEach(roomName => {
-            const listItem = document.createElement('li');
-            listItem.textContent = `Room: ${roomName}`;
-            roomListElement.appendChild(listItem);
-        });
-        activeRoomsList.appendChild(roomListElement);
-    }
-
-    async function updateOnlineUsersList() {
+    async function loadOnlineUsersAsTabs() {
+        chatbox.innerHTML = '';
         const { data: users, error } = await supabase
             .from('online_users')
             .select('*')
-            .eq('room_name', roomName);
+            .eq('room_name', currentRoomName);
         
         if (error) {
             console.error('Error fetching online users:', error);
+            chatbox.innerHTML = '<p>Error loading users.</p>';
             return;
         }
 
-        onlineUsersList.innerHTML = '';
-        
-        // Add room chat option
-        const roomChatListItem = document.createElement('li');
-        roomChatListItem.textContent = `Room: ${roomName}`;
-        roomChatListItem.style.cursor = 'pointer';
-        roomChatListItem.onclick = () => {
-            currentChatTarget = 'room';
-            chatTitle.textContent = `Room Chat: ${roomName}`;
-            roomChatListItem.classList.remove('dm-notification');
-            switchChatTarget('room', roomName);
-        };
-        onlineUsersList.appendChild(roomChatListItem);
+        const userListElement = document.createElement('div');
+        userListElement.style.display = 'flex';
+        userListElement.style.flexDirection = 'column';
+        userListElement.style.gap = '10px';
+        userListElement.style.padding = '10px';
 
-        // Add users for DM
         users.forEach(user => {
             if (user.user_id !== userId) {
-                const listItem = document.createElement('li');
-                listItem.textContent = user.username;
-                listItem.setAttribute('data-user-id', user.user_id);
-                listItem.style.cursor = 'pointer';
-                listItem.onclick = () => {
-                    currentChatTarget = user.user_id;
+                const userTab = document.createElement('div');
+                userTab.className = 'top-bar-tab';
+                userTab.textContent = user.username;
+                userTab.onclick = () => {
                     chatTitle.textContent = `DM with ${user.username}`;
-                    listItem.classList.remove('dm-notification');
                     switchChatTarget('dm', user.user_id);
                 };
-                onlineUsersList.appendChild(listItem);
+                userListElement.appendChild(userTab);
             }
-            peerUsernames[user.user_id] = user.username;
         });
+        chatbox.appendChild(userListElement);
     }
-
+    
     async function switchChatTarget(targetType, targetId) {
         if (chatSubscription) {
-            await supabase.removeChannel(chatSubscription);
+            supabase.removeChannel(chatSubscription);
         }
         chatbox.innerHTML = '';
         const loadingMessage = document.createElement('p');
         loadingMessage.textContent = 'Loading messages...';
         chatbox.appendChild(loadingMessage);
-
+        
         if (targetType === 'room') {
             const { data: messages, error } = await supabase
                 .from('room_messages')
@@ -692,9 +618,9 @@
             messages.forEach(msg => {
                 const isMyMessage = msg.sender_id === userId;
                 if (msg.type === 'text') {
-                    addMessageToChat(isMyMessage ? 'You' : msg.sender_name, msg.content, isMyMessage);
+                    addMessageToChat(msg.id, msg.sender_name, msg.content, isMyMessage);
                 } else if (msg.type === 'image') {
-                    addImageToChat(isMyMessage ? 'You' : msg.sender_name, msg.content, isMyMessage);
+                    addImageToChat(msg.id, msg.sender_name, msg.content, isMyMessage);
                 }
             });
             chatbox.scrollTop = chatbox.scrollHeight;
@@ -704,9 +630,15 @@
                     const msg = payload.new;
                     const isMyMessage = msg.sender_id === userId;
                     if (msg.type === 'text') {
-                        addMessageToChat(isMyMessage ? 'You' : msg.sender_name, msg.content, isMyMessage);
+                        addMessageToChat(msg.id, msg.sender_name, msg.content, isMyMessage);
                     } else if (msg.type === 'image') {
-                        addImageToChat(isMyMessage ? 'You' : msg.sender_name, msg.content, isMyMessage);
+                        addImageToChat(msg.id, msg.sender_name, msg.content, isMyMessage);
+                    }
+                })
+                .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'room_messages', filter: `room_name=eq.${targetId}` }, (payload) => {
+                    const messageElement = document.getElementById(`message-${payload.old.id}`);
+                    if (messageElement) {
+                        messageElement.remove();
                     }
                 })
                 .subscribe();
@@ -732,9 +664,9 @@
             messages.forEach(msg => {
                 const isMyMessage = msg.sender_id === userId;
                 if (msg.type === 'text') {
-                    addMessageToChat(isMyMessage ? 'You' : msg.sender_name, msg.content, isMyMessage);
+                    addMessageToChat(msg.id, msg.sender_name, msg.content, isMyMessage);
                 } else if (msg.type === 'image') {
-                    addImageToChat(isMyMessage ? 'You' : msg.sender_name, msg.content, isMyMessage);
+                    addImageToChat(msg.id, msg.sender_name, msg.content, isMyMessage);
                 }
             });
             chatbox.scrollTop = chatbox.scrollHeight;
@@ -744,33 +676,115 @@
                     const msg = payload.new;
                     const isMyMessage = msg.sender_id === userId;
                     if (msg.type === 'text') {
-                        addMessageToChat(isMyMessage ? 'You' : msg.sender_name, msg.content, isMyMessage);
+                        addMessageToChat(msg.id, msg.sender_name, msg.content, isMyMessage);
                     } else if (msg.type === 'image') {
-                        addImageToChat(isMyMessage ? 'You' : msg.sender_name, msg.content, isMyMessage);
+                        addImageToChat(msg.id, msg.sender_name, msg.content, isMyMessage);
+                    }
+                })
+                .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'dms', filter: `dm_path=eq.${dmPath}` }, (payload) => {
+                    const messageElement = document.getElementById(`message-${payload.old.id}`);
+                    if (messageElement) {
+                        messageElement.remove();
                     }
                 })
                 .subscribe();
         }
+        currentChatTarget = { type: targetType, id: targetId };
+    }
+
+    async function addMessageToChat(id, sender, content, isMyMessage = false) {
+        const messageWrapper = document.createElement('div');
+        messageWrapper.className = 'message-wrapper';
+        messageWrapper.id = `message-${id}`;
+
+        const messageElement = document.createElement('div');
+        messageElement.classList.add('message');
+        if (isMyMessage) {
+            messageElement.classList.add('my-message');
+            const deleteButton = document.createElement('button');
+            deleteButton.className = 'delete-button';
+            deleteButton.textContent = 'x';
+            deleteButton.onclick = () => deleteMessage(id);
+            messageWrapper.appendChild(deleteButton);
+        }
+
+        const senderElement = document.createElement('div');
+        senderElement.className = 'message-sender';
+        senderElement.textContent = sender;
+
+        const contentElement = document.createElement('div');
+        contentElement.className = 'message-content';
+        contentElement.textContent = content;
+
+        messageElement.appendChild(senderElement);
+        messageElement.appendChild(contentElement);
+        messageWrapper.appendChild(messageElement);
+
+        chatbox.appendChild(messageWrapper);
+        chatbox.scrollTop = chatbox.scrollHeight;
+    }
+
+    async function addImageToChat(id, sender, imageData, isMyMessage = false) {
+        const messageWrapper = document.createElement('div');
+        messageWrapper.className = 'message-wrapper';
+        messageWrapper.id = `message-${id}`;
+        
+        const messageElement = document.createElement('div');
+        messageElement.classList.add('message');
+        if (isMyMessage) {
+            messageElement.classList.add('my-message');
+            const deleteButton = document.createElement('button');
+            deleteButton.className = 'delete-button';
+            deleteButton.textContent = 'x';
+            deleteButton.onclick = () => deleteMessage(id);
+            messageWrapper.appendChild(deleteButton);
+        }
+
+        const senderElement = document.createElement('div');
+        senderElement.className = 'message-sender';
+        senderElement.textContent = sender;
+        
+        const imageElement = document.createElement('img');
+        imageElement.className = 'message-image';
+        imageElement.src = imageData;
+
+        messageElement.appendChild(senderElement);
+        messageElement.appendChild(imageElement);
+        messageWrapper.appendChild(messageElement);
+
+        chatbox.appendChild(messageWrapper);
+        chatbox.scrollTop = chatbox.scrollHeight;
+    }
+
+    async function deleteMessage(messageId) {
+        const confirmation = confirm("Are you sure you want to delete this message?");
+        if (confirmation) {
+            if (currentChatTarget.type === 'room') {
+                const { error } = await supabase
+                    .from('room_messages')
+                    .delete()
+                    .eq('id', messageId)
+                    .eq('sender_id', userId);
+                if (error) {
+                    console.error("Error deleting message:", error);
+                    alert("Failed to delete message. You can only delete your own messages.");
+                }
+            } else if (currentChatTarget.type === 'dm') {
+                const { error } = await supabase
+                    .from('dms')
+                    .delete()
+                    .eq('id', messageId)
+                    .eq('sender_id', userId);
+                if (error) {
+                    console.error("Error deleting message:", error);
+                    alert("Failed to delete message. You can only delete your own messages.");
+                }
+            }
+        }
     }
 
     function setupDmNotificationListener() {
-        if (dmSubscription) {
-            supabase.removeChannel(dmSubscription);
-        }
-        
-        dmSubscription = supabase
-            .channel('dm-notifications')
-            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'dms' }, (payload) => {
-                const newDm = payload.new;
-                if (newDm.dm_path.includes(userId) && newDm.sender_id !== userId) {
-                    const senderId = newDm.sender_id;
-                    const dmUserElement = onlineUsersList.querySelector(`[data-user-id="${senderId}"]`);
-                    if (dmUserElement && currentChatTarget !== senderId) {
-                        dmUserElement.classList.add('dm-notification');
-                    }
-                }
-            })
-            .subscribe();
+        // This functionality needs to be revisited to fit the new UI
     }
 
     document.addEventListener('DOMContentLoaded', () => {
@@ -782,12 +796,9 @@
                     if (userProfile) {
                         localUsername = userProfile.username;
                         userId = user.id;
-                        userIdDisplay.textContent = userId;
                         authSection.style.display = 'none';
                         mainApp.style.display = 'flex';
-                        statusMessage.textContent = `Hello, ${localUsername}! Enter a room name and click Join.`;
-                        setupDmNotificationListener();
-                        setupSignalingListener();
+                        loadServers();
                     }
                 });
             }
