@@ -854,12 +854,12 @@
     </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/twemoji@14.0.2/dist/twemoji.min.js"></script>
-<script type="module">
-    import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.7/+esm';
+<script src="https://twemoji.maxcdn.com/v/latest/twemoji.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.7/dist/supabase.min.js"></script>
+<script>
     const SUPABASE_URL = 'https://pepvpyfgpyifqlepgvbp.supabase.co';
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlcHZweWZncHlpZnFsZXBndmJwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUwNTgyODMsImV4cCI6MjA3MDYzNDI4M30.uFkZZ9bsMrc5Vhr8rVsIhNRKI_HpO_Zjp351cc70nLM';
-    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     // Tenor API Key - REPLACE WITH YOUR OWN KEY
     const TENOR_API_KEY = 'YOUR_TENOR_API_KEY';
@@ -1266,7 +1266,6 @@
         loginButton.onclick = async () => {
             const username = authUsernameInput.value.trim();
             const password = authPasswordInput.value.trim();
-
             if (username && password) {
                 authStatus.textContent = 'Logging in...';
                 try {
@@ -1274,8 +1273,7 @@
                         email: `${username}@harmony-chat.com`,
                         password: password,
                     });
-                    if (error) throw error;
-                    
+                    if (error || !data.user) throw error || new Error('No user returned');
                     const { data: userProfile, error: profileError } = await supabase
                         .from('users')
                         .select('username, display_name, profile_picture_url, dm_access')
@@ -1308,7 +1306,6 @@
             const username = authUsernameInput.value.trim();
             const displayName = authDisplaynameInput.value.trim() || username;
             const password = authPasswordInput.value.trim();
-
             if (username && password) {
                 authStatus.textContent = 'Registering user...';
                 try {
@@ -1325,11 +1322,8 @@
                         email: `${username}@harmony-chat.com`,
                         password: password,
                     });
-                    if (error) throw error;
-                    const { error: insertError } = await supabase
-                        .from('users')
-                        .insert([{ user_id: data.user.id, username: username, display_name: displayName, dm_access: 'everyone' }]);
-                    if (insertError) throw insertError;
+                    if (error || !data.user) throw error || new Error('No user returned');
+                    await supabase.from('users').insert([{ user_id: data.user.id, username: username, display_name: displayName, dm_access: 'everyone' }]);
                     authStatus.textContent = 'Registration successful! You can now log in.';
                 } catch (error) {
                     console.error("Registration error:", error);
@@ -1403,9 +1397,10 @@
             if (serverName) {
                 try {
                     const inviteCode = generateInviteCode();
+                    // Use 'room_name' for servers
                     const { data: newServer, error } = await supabase
                         .from('servers')
-                        .insert([{ name: serverName, owner_id: userId, invite_code: inviteCode }])
+                        .insert([{ room_name: serverName, owner_id: userId, invite_code: inviteCode }])
                         .select();
                     if (error) throw error;
                     if (newServer && newServer.length > 0) {
@@ -1435,10 +1430,12 @@
             }
         };
 
+        // Fix: Server joining logic
         joinServerIcon.onclick = async () => {
             const inviteCode = prompt("Enter server invite code:");
             if (inviteCode) {
                 try {
+                    // Use 'room_name' for servers
                     const { data, error } = await supabase
                         .from('servers')
                         .select('id')
@@ -1463,650 +1460,463 @@
             }
         };
 
-        discoverServersIcon.onclick = async () => {
-            discoverServersModal.style.display = 'block';
-            await loadPublicServers();
-        };
-
-        // Server dropdown menu functionality
-        serverDropdownToggle.onclick = (event) => {
-            event.stopPropagation();
-            serverDropdownMenu.classList.toggle('active');
-        };
-
-        window.onclick = (event) => {
-            if (!event.target.matches('.server-dropdown-button')) {
-                const dropdowns = document.getElementsByClassName("server-dropdown-menu");
-                for (let i = 0; i < dropdowns.length; i++) {
-                    const openDropdown = dropdowns[i];
-                    if (openDropdown.classList.contains('active')) {
-                        openDropdown.classList.remove('active');
-                    }
-                }
-            }
-        };
-
-        getInviteButton.onclick = async () => {
-            if (!currentServerId) {
-                alert("Please select a server first.");
-                return;
-            }
+        // Fix: Server loading logic
+        async function loadServers() {
+            serverSidebar.querySelectorAll('.server-icon:not(#direct-messages-icon, #discover-servers-icon, #join-server-icon, #add-server-icon)').forEach(icon => icon.remove());
             try {
                 const { data, error } = await supabase
-                    .from('servers')
-                    .select('invite_code')
-                    .eq('id', currentServerId)
-                    .single();
+                    .from('server_members')
+                    .select('servers(*)')
+                    .eq('user_id', userId);
                 if (error) throw error;
-                alert(`Invite Code for this server: ${data.invite_code}`);
-            } catch (error) {
-                console.error('Error fetching invite code:', error);
-                alert('Failed to get invite code.');
-            }
-        };
+                data.forEach(({ servers }) => {
+                    const serverIcon = document.createElement('div');
+                    serverIcon.className = 'server-icon';
+                    serverIcon.title = servers.room_name; // Use room_name
+                    serverIcon.id = `server-${servers.id}-icon`;
+                    serverIcon.onclick = () => loadChannels(servers.id, servers.room_name, servers.owner_id);
 
-        serverSettingsButton.onclick = async () => {
-            if (!currentServerId) return;
-            serverSettingsModal.style.display = 'block';
+                    if (servers.icon_url) {
+                        const img = document.createElement('img');
+                        img.src = servers.icon_url;
+                        serverIcon.appendChild(img);
+                    } else {
+                        serverIcon.textContent = servers.room_name[0];
+                    }
+                    serverSidebar.insertBefore(serverIcon, userPanel);
+                });
+                // Automatically load the first server if available
+                if (data.length > 0 && !currentServerId) {
+                    loadChannels(data[0].servers.id, data[0].servers.room_name, data[0].servers.owner_id);
+                }
+            } catch (error) {
+                console.error('Error loading servers:', error);
+            }
+        }
+
+        async function loadDmUsers() {
+            channelList.innerHTML = '';
+            try {
+                const { data: friends, error } = await supabase
+                    .from('friends')
+                    .select('user2_id, users!user2_id(display_name, profile_picture_url, username)')
+                    .eq('user1_id', userId);
+
+                if (error) throw error;
+                friends.forEach(friend => {
+                    const friendUser = friend.users;
+                    const dmItem = document.createElement('div');
+                    dmItem.className = 'user-list-item';
+                    dmItem.dataset.userId = friendUser.user_id;
+                    dmItem.onclick = () => loadDmMessages(friendUser.user_id, friendUser.display_name);
+
+                    const avatar = document.createElement('div');
+                    avatar.className = 'user-avatar';
+                    if (friendUser.profile_picture_url) {
+                        const img = document.createElement('img');
+                        img.src = friendUser.profile_picture_url;
+                        avatar.appendChild(img);
+                    }
+                    dmItem.appendChild(avatar);
+
+                    const displayName = document.createElement('span');
+                    displayName.textContent = friendUser.display_name;
+                    dmItem.appendChild(displayName);
+
+                    channelList.appendChild(dmItem);
+                });
+            } catch (error) {
+                console.error('Error loading DM users:', error);
+            }
+        }
+
+        async function loadDmMessages(targetUserId, targetDisplayName) {
+            if (chatSubscription) {
+                await supabase.removeChannel(chatSubscription);
+            }
+            chatTitle.textContent = `@${targetDisplayName}`;
+            chatbox.innerHTML = '';
+            currentChatTarget = { type: 'dm', id: targetUserId };
+
+            try {
+                const { data, error } = await supabase
+                    .from('dms')
+                    .select(`
+                        id,
+                        sender_id,
+                        content,
+                        created_at,
+                        users (
+                            display_name,
+                            profile_picture_url
+                        )
+                    `)
+                    .or(`and(sender_id.eq.${userId},recipient_id.eq.${targetUserId}),and(sender_id.eq.${targetUserId},recipient_id.eq.${userId})`)
+                    .order('created_at', { ascending: true });
+
+                if (error) throw error;
+
+                data.forEach(message => displayMessage(message));
+                chatbox.scrollTop = chatbox.scrollHeight;
+
+                // Setup real-time subscription for DMs
+                chatSubscription = supabase
+                    .channel(`dms:recipient_id=eq.${userId}`)
+                    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'dms', filter: `sender_id=eq.${targetUserId}` }, payload => {
+                        if (currentChatTarget.type === 'dm' && currentChatTarget.id === payload.new.sender_id) {
+                            displayMessage(payload.new);
+                        }
+                    })
+                    .subscribe();
+
+            } catch (error) {
+                console.error('Error loading DM messages:', error);
+            }
+
+            // Highlight the selected DM user
+            document.querySelectorAll('.user-list-item.active').forEach(item => item.classList.remove('active'));
+            document.querySelector(`.user-list-item[data-user-id="${targetUserId}"]`).classList.add('active');
+        }
+
+        async function loadChannels(serverId, serverName, serverOwnerId) {
+            if (chatSubscription) {
+                await supabase.removeChannel(chatSubscription);
+            }
+            currentServerId = serverId;
+            currentServerOwnerId = serverOwnerId;
+            serverNameHeader.textContent = serverName;
+            serverDropdownToggle.style.display = 'block';
+            channelListHeader.style.display = 'flex';
+            channelList.innerHTML = '';
+            chatTitle.textContent = 'Select a channel';
+            chatbox.innerHTML = '';
+
+            try {
+                const { data, error } = await supabase
+                    .from('channels')
+                    .select('id, name')
+                    .eq('server_id', serverId)
+                    .order('id', { ascending: true });
+                if (error) throw error;
+                data.forEach(channel => {
+                    const channelItem = document.createElement('div');
+                    channelItem.className = 'channel-list-item';
+                    channelItem.dataset.channelId = channel.id;
+                    channelItem.innerHTML = `# ${channel.name}`;
+                    channelItem.onclick = () => loadChannelMessages(channel.id, channel.name);
+                    channelList.appendChild(channelItem);
+                });
+                // Automatically load the first channel if available
+                if (data.length > 0) {
+                    loadChannelMessages(data[0].id, data[0].name);
+                }
+            } catch (error) {
+                console.error('Error loading channels:', error);
+            }
+            
+            // Highlight the selected server icon and remove highlight from DM icon
+            document.querySelectorAll('.server-icon.active').forEach(icon => icon.classList.remove('active'));
+            document.getElementById(`server-${serverId}-icon`).classList.add('active');
+        }
+
+        async function loadChannelMessages(channelId, channelName) {
+            if (chatSubscription) {
+                await supabase.removeChannel(chatSubscription);
+            }
+            chatTitle.textContent = `# ${channelName}`;
+            chatbox.innerHTML = '';
+            currentChatTarget = { type: 'channel', id: channelId };
+
+            try {
+                const { data, error } = await supabase
+                    .from('messages')
+                    .select(`
+                        id,
+                        sender_id,
+                        content,
+                        created_at,
+                        is_media,
+                        users (
+                            display_name,
+                            profile_picture_url
+                        )
+                    `)
+                    .eq('channel_id', channelId)
+                    .order('created_at', { ascending: true });
+            
+                if (error) throw error;
+            
+                data.forEach(message => displayMessage(message));
+                chatbox.scrollTop = chatbox.scrollHeight;
+
+                // Setup real-time subscription for the current channel
+                chatSubscription = supabase
+                    .channel(`messages:channel_id=eq.${channelId}`)
+                    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
+                        if (currentChatTarget.type === 'channel' && currentChatTarget.id === payload.new.channel_id) {
+                            displayMessage(payload.new);
+                        }
+                    })
+                    .subscribe();
+
+            } catch (error) {
+                console.error('Error loading channel messages:', error);
+            }
+
+            // Highlight the selected channel
+            document.querySelectorAll('.channel-list-item.active').forEach(item => item.classList.remove('active'));
+            document.querySelector(`.channel-list-item[data-channel-id="${channelId}"]`).classList.add('active');
+        }
+        
+        function displayMessage(message) {
+            const messageWrapper = document.createElement('div');
+            messageWrapper.className = 'message-wrapper';
+            if (message.sender_id === userId) {
+                messageWrapper.classList.add('my-message');
+            }
+            
+            const messageAvatar = document.createElement('div');
+            messageAvatar.className = 'message-avatar';
+            messageAvatar.onclick = () => openProfileModal(message.sender_id, message.users.display_name, message.users.username, message.users.profile_picture_url);
+
+            if (message.users.profile_picture_url) {
+                const avatarImg = document.createElement('img');
+                avatarImg.src = message.users.profile_picture_url;
+                messageAvatar.appendChild(avatarImg);
+            }
+            
+            const messageContentContainer = document.createElement('div');
+            messageContentContainer.className = 'message-content-container';
+
+            const messageSender = document.createElement('div');
+            messageSender.className = 'message-sender';
+            messageSender.textContent = message.users.display_name;
+
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message';
+
+            const messageText = document.createElement('div');
+            messageText.className = 'message-text';
+
+            // Check if the message is a media URL or a regular message
+            if (message.is_media) {
+                const mediaUrl = message.content;
+                const fileExtension = mediaUrl.split('.').pop().toLowerCase();
+                if (['jpg', 'jpeg', 'png', 'gif', 'svg'].includes(fileExtension) || mediaUrl.includes('gif')) {
+                    const img = document.createElement('img');
+                    img.src = mediaUrl;
+                    img.className = 'message-image';
+                    messageText.appendChild(img);
+                } else {
+                    messageText.textContent = `[File] ${message.content}`;
+                }
+            } else {
+                messageText.innerHTML = twemoji.parse(message.content);
+            }
+
+            messageDiv.appendChild(messageText);
+            messageContentContainer.appendChild(messageSender);
+            messageContentContainer.appendChild(messageDiv);
+            messageWrapper.appendChild(messageAvatar);
+            messageWrapper.appendChild(messageContentContainer);
+
+            // Add a delete button for the message sender
+            if (message.sender_id === userId) {
+                const deleteButton = document.createElement('button');
+                deleteButton.className = 'delete-button';
+                deleteButton.textContent = '×';
+                deleteButton.onclick = () => deleteMessage(message.id);
+                messageDiv.appendChild(deleteButton);
+            }
+            
+            chatbox.appendChild(messageWrapper);
+            chatbox.scrollTop = chatbox.scrollHeight;
+        }
+    
+        async function deleteMessage(messageId) {
+            if (currentChatTarget.type === 'channel') {
+                try {
+                    const { error } = await supabase
+                        .from('messages')
+                        .delete()
+                        .eq('id', messageId);
+                    if (error) throw error;
+                    // Reload chat to reflect deletion
+                    loadChannelMessages(currentChatTarget.id, chatTitle.textContent.substring(2));
+                } catch (error) {
+                    console.error('Error deleting message:', error);
+                    alert('Failed to delete message.');
+                }
+            } else {
+                alert('Cannot delete messages in DMs yet.');
+            }
+        }
+        
+        async function sendMessage(content, isMedia = false) {
+            if (currentChatTarget.type === 'channel') {
+                try {
+                    const { error } = await supabase
+                        .from('messages')
+                        .insert([{ channel_id: currentChatTarget.id, sender_id: userId, content, is_media: isMedia }]);
+                    if (error) throw error;
+                } catch (error) {
+                    console.error('Error sending message:', error);
+                    alert('Failed to send message.');
+                }
+            } else if (currentChatTarget.type === 'dm') {
+                try {
+                    const { error } = await supabase
+                        .from('dms')
+                        .insert([{ sender_id: userId, recipient_id: currentChatTarget.id, content, is_media: isMedia }]);
+                    if (error) throw error;
+                    // Add message to chatbox immediately
+                    const newMessage = {
+                        sender_id: userId,
+                        recipient_id: currentChatTarget.id,
+                        content: content,
+                        created_at: new Date().toISOString(),
+                        is_media: isMedia,
+                        users: {
+                            display_name: localDisplayName,
+                            profile_picture_url: localProfilePictureUrl,
+                        }
+                    };
+                    displayMessage(newMessage);
+                } catch (error) {
+                    console.error('Error sending DM:', error);
+                    alert('Failed to send DM.');
+                }
+            }
+        }
+        
+        async function openProfileModal(targetUserId, targetDisplayName, targetUsername, targetProfilePicture) {
+            userProfileModal.style.display = 'block';
+            profileDisplayName.textContent = targetDisplayName;
+            profileUsername.textContent = `@${targetUsername}`;
+            profileAvatar.innerHTML = '';
+            if (targetProfilePicture) {
+                const img = document.createElement('img');
+                img.src = targetProfilePicture;
+                profileAvatar.appendChild(img);
+            }
+            profileActions.innerHTML = '';
+            if (targetUserId !== userId) {
+                // Add DM button
+                const dmButton = document.createElement('button');
+                dmButton.textContent = 'DM';
+                dmButton.id = 'dm-button';
+                dmButton.onclick = () => {
+                    // Find or create a DM conversation and open it
+                    alert('DM functionality coming soon!');
+                    userProfileModal.style.display = 'none';
+                };
+                profileActions.appendChild(dmButton);
+                
+                // Add Friend button
+                const friendButton = document.createElement('button');
+                friendButton.textContent = 'Add Friend';
+                friendButton.id = 'friend-button';
+                friendButton.onclick = async () => {
+                    try {
+                        const { error } = await supabase
+                            .from('friends')
+                            .insert([{ user1_id: userId, user2_id: targetUserId }]);
+                        if (error) throw error;
+                        alert('Friend request sent!');
+                    } catch (error) {
+                        console.error('Error adding friend:', error);
+                        alert('Failed to add friend.');
+                    }
+                    userProfileModal.style.display = 'none';
+                };
+                profileActions.appendChild(friendButton);
+            }
+        }
+
+        // Fix: Discover servers logic
+        async function loadPublicServers() {
+            publicServersList.innerHTML = '';
             try {
                 const { data, error } = await supabase
                     .from('servers')
                     .select('*')
-                    .eq('id', currentServerId)
-                    .single();
+                    .eq('is_public', true);
                 if (error) throw error;
-                serverNameInput.value = data.name;
-                isPublicCheckbox.checked = data.is_public;
-                // Only show custom media sections to the server owner
-                if (userId === data.owner_id) {
-                    customEmojisSection.style.display = 'block';
-                    customStickersSection.style.display = 'block';
-                    loadCustomMedia(currentServerId);
+                if (data.length === 0) {
+                    publicServersList.innerHTML = '<p>No public servers found.</p>';
                 } else {
-                    customEmojisSection.style.display = 'none';
-                    customStickersSection.style.display = 'none';
+                    data.forEach(server => {
+                        const serverDiv = document.createElement('div');
+                        serverDiv.className = 'server-list-item';
+                        serverDiv.innerHTML = `
+                            <div class="user-avatar" style="background-image: url('${server.icon_url || ''}')"></div>
+                            <span>${server.room_name}</span>
+                            <button onclick="joinServer('${server.invite_code}')">Join</button>
+                        `;
+                        publicServersList.appendChild(serverDiv);
+                    });
                 }
             } catch (error) {
-                console.error('Error fetching server settings:', error);
-            }
-        };
-        
-        // New event listener for the Sign Out button
-        signOutButton.onclick = async () => {
-            try {
-                const { error } = await supabase.auth.signOut();
-                if (error) throw error;
-                // Redirect to the login page (or show the auth section)
-                authSection.style.display = 'flex';
-                mainApp.style.display = 'none';
-                // Clear any local state or chat subscriptions
-                unsubscribeFromChat();
-            } catch (error) {
-                console.error('Error signing out:', error);
-                alert('Failed to sign out. Please try again.');
-            }
-        };
-        
-        userPanel.onclick = () => {
-            userSettingsModal.style.display = 'block';
-            settingsDisplayNameInput.value = localDisplayName;
-            settingsDmAccess.value = localDmAccess;
-        };
-
-        closeSettingsModal.onclick = () => {
-            userSettingsModal.style.display = 'none';
-        };
-        
-        closeProfileModal.onclick = () => {
-            userProfileModal.style.display = 'none';
-        };
-
-        closeServerSettingsModal.onclick = () => {
-            serverSettingsModal.style.display = 'none';
-        };
-
-        closeDiscoverModal.onclick = () => {
-            discoverServersModal.style.display = 'none';
-        };
-
-        serverSettingsForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            try {
-                // Update display name and dm access
-                await supabase
-                    .from('users')
-                    .update({
-                        display_name: settingsDisplayNameInput.value,
-                        dm_access: settingsDmAccess.value
-                    })
-                    .eq('user_id', userId);
-                localDisplayName = settingsDisplayNameInput.value;
-                localDmAccess = settingsDmAccess.value;
-
-                // Handle profile picture upload
-                const file = settingsProfilePictureInput.files[0];
-                if (file) {
-                    const fileExtension = file.name.split('.').pop();
-                    const filePath = `${userId}/avatar.${fileExtension}`;
-                    const { data: uploadData, error: uploadError } = await supabase.storage
-                        .from('avatars')
-                        .upload(filePath, file, { upsert: true });
-                    if (uploadError) throw uploadError;
-
-                    const { data: publicUrlData } = supabase.storage
-                        .from('avatars')
-                        .getPublicUrl(filePath);
-                    const imageUrl = publicUrlData.publicUrl;
-
-                    await supabase
-                        .from('users')
-                        .update({ profile_picture_url: imageUrl })
-                        .eq('user_id', userId);
-                    localProfilePictureUrl = imageUrl;
-                }
-                updateUserPanel();
-                settingsStatus.textContent = 'Settings saved successfully!';
-            } catch (error) {
-                console.error('Error saving user settings:', error);
-                settingsStatus.textContent = 'Failed to save settings.';
-            }
-        });
-        
-        userSettingsForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            try {
-                // Update display name and dm access
-                await supabase
-                    .from('users')
-                    .update({
-                        display_name: settingsDisplayNameInput.value,
-                        dm_access: settingsDmAccess.value
-                    })
-                    .eq('user_id', userId);
-                localDisplayName = settingsDisplayNameInput.value;
-                localDmAccess = settingsDmAccess.value;
-
-                // Handle profile picture upload
-                const file = settingsProfilePictureInput.files[0];
-                if (file) {
-                    const fileExtension = file.name.split('.').pop();
-                    const filePath = `${userId}/avatar.${fileExtension}`;
-                    const { data: uploadData, error: uploadError } = await supabase.storage
-                        .from('avatars')
-                        .upload(filePath, file, { upsert: true });
-                    if (uploadError) throw uploadError;
-
-                    const { data: publicUrlData } = supabase.storage
-                        .from('avatars')
-                        .getPublicUrl(filePath);
-                    const imageUrl = publicUrlData.publicUrl;
-
-                    await supabase
-                        .from('users')
-                        .update({ profile_picture_url: imageUrl })
-                        .eq('user_id', userId);
-                    localProfilePictureUrl = imageUrl;
-                }
-                updateUserPanel();
-                settingsStatus.textContent = 'Settings saved successfully!';
-            } catch (error) {
-                console.error('Error saving user settings:', error);
-                settingsStatus.textContent = 'Failed to save settings.';
-            }
-        });
-    }
-
-    async function loadServers() {
-        serverSidebar.querySelectorAll('.server-icon:not(#direct-messages-icon, #discover-servers-icon, #join-server-icon, #add-server-icon)').forEach(icon => icon.remove());
-        try {
-            const { data, error } = await supabase
-                .from('server_members')
-                .select('servers(*)')
-                .eq('user_id', userId);
-            if (error) throw error;
-            data.forEach(({ servers }) => {
-                const serverIcon = document.createElement('div');
-                serverIcon.className = 'server-icon';
-                serverIcon.title = servers.name;
-                serverIcon.id = `server-${servers.id}-icon`;
-                serverIcon.onclick = () => loadChannels(servers.id, servers.name, servers.owner_id);
-
-                if (servers.icon_url) {
-                    const img = document.createElement('img');
-                    img.src = servers.icon_url;
-                    serverIcon.appendChild(img);
-                } else {
-                    serverIcon.textContent = servers.name[0];
-                }
-                serverSidebar.insertBefore(serverIcon, userPanel);
-            });
-            // Automatically load the first server if available
-            if (data.length > 0 && !currentServerId) {
-                loadChannels(data[0].servers.id, data[0].servers.name, data[0].servers.owner_id);
-            }
-        } catch (error) {
-            console.error('Error loading servers:', error);
-        }
-    }
-
-    async function loadDmUsers() {
-        channelList.innerHTML = '';
-        try {
-            const { data: friends, error } = await supabase
-                .from('friends')
-                .select('user2_id, users!user2_id(display_name, profile_picture_url, username)')
-                .eq('user1_id', userId);
-
-            if (error) throw error;
-            friends.forEach(friend => {
-                const friendUser = friend.users;
-                const dmItem = document.createElement('div');
-                dmItem.className = 'user-list-item';
-                dmItem.dataset.userId = friendUser.user_id;
-                dmItem.onclick = () => loadDmMessages(friendUser.user_id, friendUser.display_name);
-
-                const avatar = document.createElement('div');
-                avatar.className = 'user-avatar';
-                if (friendUser.profile_picture_url) {
-                    const img = document.createElement('img');
-                    img.src = friendUser.profile_picture_url;
-                    avatar.appendChild(img);
-                }
-                dmItem.appendChild(avatar);
-
-                const displayName = document.createElement('span');
-                displayName.textContent = friendUser.display_name;
-                dmItem.appendChild(displayName);
-
-                channelList.appendChild(dmItem);
-            });
-        } catch (error) {
-            console.error('Error loading DM users:', error);
-        }
-    }
-
-    async function loadDmMessages(targetUserId, targetDisplayName) {
-        if (chatSubscription) {
-            await supabase.removeChannel(chatSubscription);
-        }
-        chatTitle.textContent = `@${targetDisplayName}`;
-        chatbox.innerHTML = '';
-        currentChatTarget = { type: 'dm', id: targetUserId };
-
-        try {
-            const { data, error } = await supabase
-                .from('dms')
-                .select(`
-                    id,
-                    sender_id,
-                    content,
-                    created_at,
-                    users (
-                        display_name,
-                        profile_picture_url
-                    )
-                `)
-                .or(`and(sender_id.eq.${userId},recipient_id.eq.${targetUserId}),and(sender_id.eq.${targetUserId},recipient_id.eq.${userId})`)
-                .order('created_at', { ascending: true });
-
-            if (error) throw error;
-
-            data.forEach(message => displayMessage(message));
-            chatbox.scrollTop = chatbox.scrollHeight;
-
-            // Setup real-time subscription for DMs
-            chatSubscription = supabase
-                .channel(`dms:recipient_id=eq.${userId}`)
-                .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'dms', filter: `sender_id=eq.${targetUserId}` }, payload => {
-                    if (currentChatTarget.type === 'dm' && currentChatTarget.id === payload.new.sender_id) {
-                        displayMessage(payload.new);
-                    }
-                })
-                .subscribe();
-
-        } catch (error) {
-            console.error('Error loading DM messages:', error);
-        }
-
-        // Highlight the selected DM user
-        document.querySelectorAll('.user-list-item.active').forEach(item => item.classList.remove('active'));
-        document.querySelector(`.user-list-item[data-user-id="${targetUserId}"]`).classList.add('active');
-    }
-
-    async function loadChannels(serverId, serverName, serverOwnerId) {
-        if (chatSubscription) {
-            await supabase.removeChannel(chatSubscription);
-        }
-        currentServerId = serverId;
-        currentServerOwnerId = serverOwnerId;
-        serverNameHeader.textContent = serverName;
-        serverDropdownToggle.style.display = 'block';
-        channelListHeader.style.display = 'flex';
-        channelList.innerHTML = '';
-        chatTitle.textContent = 'Select a channel';
-        chatbox.innerHTML = '';
-
-        try {
-            const { data, error } = await supabase
-                .from('channels')
-                .select('id, name')
-                .eq('server_id', serverId)
-                .order('id', { ascending: true });
-            if (error) throw error;
-            data.forEach(channel => {
-                const channelItem = document.createElement('div');
-                channelItem.className = 'channel-list-item';
-                channelItem.dataset.channelId = channel.id;
-                channelItem.innerHTML = `# ${channel.name}`;
-                channelItem.onclick = () => loadChannelMessages(channel.id, channel.name);
-                channelList.appendChild(channelItem);
-            });
-            // Automatically load the first channel if available
-            if (data.length > 0) {
-                loadChannelMessages(data[0].id, data[0].name);
-            }
-        } catch (error) {
-            console.error('Error loading channels:', error);
-        }
-        
-        // Highlight the selected server icon and remove highlight from DM icon
-        document.querySelectorAll('.server-icon.active').forEach(icon => icon.classList.remove('active'));
-        document.getElementById(`server-${serverId}-icon`).classList.add('active');
-    }
-
-    async function loadChannelMessages(channelId, channelName) {
-        if (chatSubscription) {
-            await supabase.removeChannel(chatSubscription);
-        }
-        chatTitle.textContent = `# ${channelName}`;
-        chatbox.innerHTML = '';
-        currentChatTarget = { type: 'channel', id: channelId };
-
-        try {
-            const { data, error } = await supabase
-                .from('messages')
-                .select(`
-                    id,
-                    sender_id,
-                    content,
-                    created_at,
-                    is_media,
-                    users (
-                        display_name,
-                        profile_picture_url
-                    )
-                `)
-                .eq('channel_id', channelId)
-                .order('created_at', { ascending: true });
-            
-            if (error) throw error;
-            
-            data.forEach(message => displayMessage(message));
-            chatbox.scrollTop = chatbox.scrollHeight;
-
-            // Setup real-time subscription for the current channel
-            chatSubscription = supabase
-                .channel(`messages:channel_id=eq.${channelId}`)
-                .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
-                    if (currentChatTarget.type === 'channel' && currentChatTarget.id === payload.new.channel_id) {
-                        displayMessage(payload.new);
-                    }
-                })
-                .subscribe();
-
-        } catch (error) {
-            console.error('Error loading channel messages:', error);
-        }
-
-        // Highlight the selected channel
-        document.querySelectorAll('.channel-list-item.active').forEach(item => item.classList.remove('active'));
-        document.querySelector(`.channel-list-item[data-channel-id="${channelId}"]`).classList.add('active');
-    }
-    
-    function displayMessage(message) {
-        const messageWrapper = document.createElement('div');
-        messageWrapper.className = 'message-wrapper';
-        if (message.sender_id === userId) {
-            messageWrapper.classList.add('my-message');
-        }
-        
-        const messageAvatar = document.createElement('div');
-        messageAvatar.className = 'message-avatar';
-        messageAvatar.onclick = () => openProfileModal(message.sender_id, message.users.display_name, message.users.username, message.users.profile_picture_url);
-
-        if (message.users.profile_picture_url) {
-            const avatarImg = document.createElement('img');
-            avatarImg.src = message.users.profile_picture_url;
-            messageAvatar.appendChild(avatarImg);
-        }
-        
-        const messageContentContainer = document.createElement('div');
-        messageContentContainer.className = 'message-content-container';
-
-        const messageSender = document.createElement('div');
-        messageSender.className = 'message-sender';
-        messageSender.textContent = message.users.display_name;
-
-        const messageDiv = document.createElement('div');
-        messageDiv.className = 'message';
-
-        const messageText = document.createElement('div');
-        messageText.className = 'message-text';
-
-        // Check if the message is a media URL or a regular message
-        if (message.is_media) {
-            const mediaUrl = message.content;
-            const fileExtension = mediaUrl.split('.').pop().toLowerCase();
-            if (['jpg', 'jpeg', 'png', 'gif', 'svg'].includes(fileExtension) || mediaUrl.includes('gif')) {
-                const img = document.createElement('img');
-                img.src = mediaUrl;
-                img.className = 'message-image';
-                messageText.appendChild(img);
-            } else {
-                messageText.textContent = `[File] ${message.content}`;
-            }
-        } else {
-            messageText.innerHTML = twemoji.parse(message.content);
-        }
-
-        messageDiv.appendChild(messageText);
-        messageContentContainer.appendChild(messageSender);
-        messageContentContainer.appendChild(messageDiv);
-        messageWrapper.appendChild(messageAvatar);
-        messageWrapper.appendChild(messageContentContainer);
-
-        // Add a delete button for the message sender
-        if (message.sender_id === userId) {
-            const deleteButton = document.createElement('button');
-            deleteButton.className = 'delete-button';
-            deleteButton.textContent = '×';
-            deleteButton.onclick = () => deleteMessage(message.id);
-            messageDiv.appendChild(deleteButton);
-        }
-        
-        chatbox.appendChild(messageWrapper);
-        chatbox.scrollTop = chatbox.scrollHeight;
-    }
-    
-    async function deleteMessage(messageId) {
-        if (currentChatTarget.type === 'channel') {
-            try {
-                const { error } = await supabase
-                    .from('messages')
-                    .delete()
-                    .eq('id', messageId);
-                if (error) throw error;
-                // Reload chat to reflect deletion
-                loadChannelMessages(currentChatTarget.id, chatTitle.textContent.substring(2));
-            } catch (error) {
-                console.error('Error deleting message:', error);
-                alert('Failed to delete message.');
-            }
-        } else {
-            alert('Cannot delete messages in DMs yet.');
-        }
-    }
-    
-    async function sendMessage(content, isMedia = false) {
-        if (currentChatTarget.type === 'channel') {
-            try {
-                const { error } = await supabase
-                    .from('messages')
-                    .insert([{ channel_id: currentChatTarget.id, sender_id: userId, content, is_media: isMedia }]);
-                if (error) throw error;
-            } catch (error) {
-                console.error('Error sending message:', error);
-                alert('Failed to send message.');
-            }
-        } else if (currentChatTarget.type === 'dm') {
-            try {
-                const { error } = await supabase
-                    .from('dms')
-                    .insert([{ sender_id: userId, recipient_id: currentChatTarget.id, content, is_media: isMedia }]);
-                if (error) throw error;
-                // Add message to chatbox immediately
-                const newMessage = {
-                    sender_id: userId,
-                    recipient_id: currentChatTarget.id,
-                    content: content,
-                    created_at: new Date().toISOString(),
-                    is_media: isMedia,
-                    users: {
-                        display_name: localDisplayName,
-                        profile_picture_url: localProfilePictureUrl,
-                    }
-                };
-                displayMessage(newMessage);
-            } catch (error) {
-                console.error('Error sending DM:', error);
-                alert('Failed to send DM.');
+                console.error('Error loading public servers:', error);
+                publicServersList.innerHTML = `<p style="color:red;">Failed to load public servers: ${error.message}</p>`;
             }
         }
-    }
-    
-    async function openProfileModal(targetUserId, targetDisplayName, targetUsername, targetProfilePicture) {
-        userProfileModal.style.display = 'block';
-        profileDisplayName.textContent = targetDisplayName;
-        profileUsername.textContent = `@${targetUsername}`;
-        profileAvatar.innerHTML = '';
-        if (targetProfilePicture) {
-            const img = document.createElement('img');
-            img.src = targetProfilePicture;
-            profileAvatar.appendChild(img);
-        }
-        profileActions.innerHTML = '';
-        if (targetUserId !== userId) {
-            // Add DM button
-            const dmButton = document.createElement('button');
-            dmButton.textContent = 'DM';
-            dmButton.id = 'dm-button';
-            dmButton.onclick = () => {
-                // Find or create a DM conversation and open it
-                alert('DM functionality coming soon!');
-                userProfileModal.style.display = 'none';
-            };
-            profileActions.appendChild(dmButton);
-            
-            // Add Friend button
-            const friendButton = document.createElement('button');
-            friendButton.textContent = 'Add Friend';
-            friendButton.id = 'friend-button';
-            friendButton.onclick = async () => {
+
+        async function checkUserSession() {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user) {
+                userId = user.id;
                 try {
-                    const { error } = await supabase
-                        .from('friends')
-                        .insert([{ user1_id: userId, user2_id: targetUserId }]);
+                    const { data: userProfile, error } = await supabase
+                        .from('users')
+                        .select('username, display_name, profile_picture_url, dm_access')
+                        .eq('user_id', userId)
+                        .single();
                     if (error) throw error;
-                    alert('Friend request sent!');
+                    localUsername = userProfile.username;
+                    localDisplayName = userProfile.display_name;
+                    localProfilePictureUrl = userProfile.profile_picture_url;
+                    localDmAccess = userProfile.dm_access;
+                    authSection.style.display = 'none';
+                    mainApp.style.display = 'flex';
+                    updateUserPanel();
+                    loadServers();
                 } catch (error) {
-                    console.error('Error adding friend:', error);
-                    alert('Failed to add friend.');
+                    console.error('User profile not found:', error);
+                    // Force sign out if profile is missing
+                    await supabase.auth.signOut();
+                    authSection.style.display = 'flex';
+                    mainApp.style.display = 'none';
                 }
-                userProfileModal.style.display = 'none';
-            };
-            profileActions.appendChild(friendButton);
-        }
-    }
-
-    async function loadPublicServers() {
-        publicServersList.innerHTML = '';
-        try {
-            const { data, error } = await supabase
-                .from('servers')
-                .select('*')
-                .eq('is_public', true);
-            if (error) throw error;
-            if (data.length === 0) {
-                publicServersList.innerHTML = '<p>No public servers found.</p>';
             } else {
-                data.forEach(server => {
-                    const serverDiv = document.createElement('div');
-                    serverDiv.className = 'server-list-item';
-                    serverDiv.innerHTML = `
-                        <div class="user-avatar" style="background-image: url('${server.icon_url || ''}')"></div>
-                        <span>${server.name}</span>
-                        <button onclick="joinServer('${server.invite_code}')">Join</button>
-                    `;
-                    publicServersList.appendChild(serverDiv);
-                });
-            }
-        } catch (error) {
-            console.error('Error loading public servers:', error);
-            publicServersList.innerHTML = `<p style="color:red;">Failed to load public servers: ${error.message}</p>`;
-        }
-    }
-
-    async function checkUserSession() {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-            userId = user.id;
-            try {
-                const { data: userProfile, error } = await supabase
-                    .from('users')
-                    .select('username, display_name, profile_picture_url, dm_access')
-                    .eq('user_id', userId)
-                    .single();
-                if (error) throw error;
-                localUsername = userProfile.username;
-                localDisplayName = userProfile.display_name;
-                localProfilePictureUrl = userProfile.profile_picture_url;
-                localDmAccess = userProfile.dm_access;
-                authSection.style.display = 'none';
-                mainApp.style.display = 'flex';
-                updateUserPanel();
-                loadServers();
-            } catch (error) {
-                console.error('User profile not found:', error);
-                // Force sign out if profile is missing
-                await supabase.auth.signOut();
                 authSection.style.display = 'flex';
                 mainApp.style.display = 'none';
             }
-        } else {
-            authSection.style.display = 'flex';
-            mainApp.style.display = 'none';
         }
-    }
 
-    function updateUserPanel() {
-        myDisplayName.textContent = localDisplayName || localUsername;
-        myAvatar.innerHTML = '';
-        if (localProfilePictureUrl) {
-            const img = document.createElement('img');
-            img.src = localProfilePictureUrl;
-            myAvatar.appendChild(img);
+        function updateUserPanel() {
+            myDisplayName.textContent = localDisplayName || localUsername;
+            myAvatar.innerHTML = '';
+            if (localProfilePictureUrl) {
+                const img = document.createElement('img');
+                img.src = localProfilePictureUrl;
+                myAvatar.appendChild(img);
+            }
         }
-    }
-    
-    function unsubscribeFromChat() {
-        if (chatSubscription) {
-            supabase.removeChannel(chatSubscription);
-            chatSubscription = null;
+        
+        function unsubscribeFromChat() {
+            if (chatSubscription) {
+                supabase.removeChannel(chatSubscription);
+                chatSubscription = null;
+            }
         }
-    }
 
+    } // <-- This closes setupEventListeners
+
+    // Call the functions after definition
     setupEventListeners();
     checkUserSession();
+
 </script>
 </body>
 </html>
