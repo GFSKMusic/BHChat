@@ -1,3 +1,5 @@
+// THIS IS OUTDATED AND OBSOLETE! ONLY HERE FOR ARCHIVAL!!
+
 const authSection = document.getElementById('auth-section');
 const mainApp = document.getElementById('main-app');
 const authUsernameInput = document.getElementById('auth-username');
@@ -528,3 +530,4 @@ function displayOnlineUsers(users) {
         }
     }
 }
+
