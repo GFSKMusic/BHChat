@@ -75,6 +75,10 @@
             word-break: break-all;
             margin-top: 10px;
         }
+        .dm-notification {
+            font-weight: bold;
+            color: red;
+        }
     </style>
 </head>
 <body>
@@ -178,6 +182,7 @@
     let currentChatTarget = 'room';
     let userListInterval;
     let chatSubscription; // Supabase real-time subscription object
+    let dmSubscription; // New subscription for DM notifications
 
     const signalingServerUrl = 'wss://bhchat.onrender.com';
     let ws;
@@ -223,6 +228,7 @@
                         authSection.style.display = 'none';
                         mainApp.style.display = 'flex';
                         statusMessage.textContent = `Hello, ${localUsername}! Enter a room name and click Join.`;
+                        setupDmNotificationListener(); // Setup the new listener on login
                     }
                 } catch (error) {
                     console.error("Login error:", error);
@@ -472,6 +478,7 @@
             console.log('Disconnected from signaling server.');
             if (userListInterval) { clearInterval(userListInterval); }
             if (chatSubscription) { chatSubscription.unsubscribe(); }
+            if (dmSubscription) { supabase.removeChannel(dmSubscription); }
         };
         ws.onerror = (error) => { console.error('WebSocket error:', error); };
     }
@@ -632,6 +639,7 @@
         messageElement.classList.add('message');
         if (isMyMessage) { messageElement.classList.add('my-message'); }
         chatbox.appendChild(messageElement);
+        chatbox.scrollTop = chatbox.scrollHeight; // Auto-scroll to the latest message
     }
 
     function addImageToChat(sender, imageData, isMyMessage = false) {
@@ -650,6 +658,7 @@
         messageElement.appendChild(imageElement);
 
         chatbox.appendChild(messageElement);
+        chatbox.scrollTop = chatbox.scrollHeight; // Auto-scroll to the latest message
     }
 
     function displayActiveRooms(rooms) {
@@ -692,6 +701,8 @@
         roomChatListItem.onclick = () => {
             currentChatTarget = 'room';
             chatTitle.textContent = `Room Chat: ${roomName}`;
+            // Remove notification from this item if it existed
+            roomChatListItem.classList.remove('dm-notification');
             switchChatTarget('room', roomName);
         };
         onlineUsersList.appendChild(roomChatListItem);
@@ -701,10 +712,13 @@
             if (user.userId !== userId) {
                 const listItem = document.createElement('li');
                 listItem.textContent = user.username;
+                listItem.setAttribute('data-user-id', user.userId);
                 listItem.style.cursor = 'pointer';
                 listItem.onclick = () => {
                     currentChatTarget = user.userId;
                     chatTitle.textContent = `DM with ${user.username}`;
+                    // Remove notification from this item
+                    listItem.classList.remove('dm-notification');
                     switchChatTarget('dm', user.userId);
                 };
                 onlineUsersList.appendChild(listItem);
@@ -755,7 +769,6 @@
                     } else if (msg.type === 'image') {
                         addImageToChat(isMyMessage ? 'You' : msg.sender_name, msg.content, isMyMessage);
                     }
-                    chatbox.scrollTop = chatbox.scrollHeight;
                 })
                 .subscribe();
 
@@ -796,16 +809,56 @@
                     } else if (msg.type === 'image') {
                         addImageToChat(isMyMessage ? 'You' : msg.sender_name, msg.content, isMyMessage);
                     }
-                    chatbox.scrollTop = chatbox.scrollHeight;
                 })
                 .subscribe();
         }
+    }
+
+    function setupDmNotificationListener() {
+        if (dmSubscription) {
+            supabase.removeChannel(dmSubscription);
+        }
+        
+        // Listen for all new DM messages
+        dmSubscription = supabase
+            .channel('dm-notifications')
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'dms' }, (payload) => {
+                const newDm = payload.new;
+                // Check if the current user is the recipient of the new DM
+                if (newDm.dm_path.includes(userId) && newDm.sender_id !== userId) {
+                    const senderId = newDm.sender_id;
+                    const dmUserElement = onlineUsersList.querySelector(`[data-user-id="${senderId}"]`);
+                    // Only add notification if the user is not currently viewing that DM chat
+                    if (dmUserElement && currentChatTarget !== senderId) {
+                        dmUserElement.classList.add('dm-notification');
+                    }
+                }
+            })
+            .subscribe();
     }
 
     // Call setupEventListeners() once the page loads
     document.addEventListener('DOMContentLoaded', () => {
         setupEventListeners();
         connectToSignalingServer();
+        // Check for an existing session on page load
+        supabase.auth.getSession().then(({ data: { session } }) => {
+            if (session) {
+                // If a session exists, retrieve the user's details and show the main app
+                const user = session.user;
+                supabase.from('users').select('username').eq('user_id', user.id).single().then(({ data: userProfile }) => {
+                    if (userProfile) {
+                        localUsername = userProfile.username;
+                        userId = user.id;
+                        userIdDisplay.textContent = userId;
+                        authSection.style.display = 'none';
+                        mainApp.style.display = 'flex';
+                        statusMessage.textContent = `Hello, ${localUsername}! Enter a room name and click Join.`;
+                        setupDmNotificationListener();
+                    }
+                });
+            }
+        });
     });
 
 </script>
