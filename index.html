@@ -126,11 +126,22 @@
             gap: 5px;
         }
 
-        .channel-list-header, .user-list-header {
+        .channel-list-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
             color: var(--white-text);
             font-weight: bold;
             margin-bottom: 5px;
             padding: 5px;
+        }
+        
+        .channel-list-header button {
+            background: none;
+            border: none;
+            color: var(--white-text);
+            font-size: 1.5rem;
+            cursor: pointer;
         }
 
         .channel-list-item, .user-list-item {
@@ -311,7 +322,10 @@
     
     <div class="main-content">
         <div class="channel-sidebar">
-            <h3 class="channel-list-header">Text Channels</h3>
+            <div class="channel-list-header">
+                <h3>Text Channels</h3>
+                <button id="add-channel-button">+</button>
+            </div>
             <div id="channel-list"></div>
         </div>
 
@@ -354,6 +368,7 @@
     const togglePassword = document.getElementById('toggle-password');
     const serverSidebar = document.getElementById('server-sidebar');
     const channelList = document.getElementById('channel-list');
+    const addChannelButton = document.getElementById('add-channel-button');
     const chatbox = document.getElementById('chatbox');
     const chatInput = document.getElementById('chat-input');
     const chatInputForm = document.getElementById('chat-input-form');
@@ -369,7 +384,7 @@
     let userId;
     let currentServerId;
     let currentChannelId;
-    let currentChatTarget = { type: 'room', id: '' };
+    let currentChatTarget = { type: 'channel', id: '' };
     let chatSubscription;
 
     function setupEventListeners() {
@@ -458,15 +473,33 @@
                 const { error, data } = await supabase
                     .from('servers')
                     .insert({ room_name: newRoomName, owner_id: userId })
-                    .select(); // Select the inserted data to get the new server's ID
+                    .select();
                 if (error) {
                     console.error("Error creating server:", error);
                     alert("Failed to create server. It might already exist.");
                 } else {
                     const newServer = data[0];
-                    // Create a default "general" channel for the new server
                     await supabase.from('channels').insert({ server_id: newServer.id, name: 'general' });
                     loadServers();
+                }
+            }
+        };
+        
+        addChannelButton.onclick = async () => {
+            if (!currentServerId) {
+                alert("Please select a server first.");
+                return;
+            }
+            const newChannelName = prompt("Enter a new channel name:");
+            if (newChannelName) {
+                const { error } = await supabase
+                    .from('channels')
+                    .insert({ server_id: currentServerId, name: newChannelName });
+                if (error) {
+                    console.error("Error creating channel:", error);
+                    alert("Failed to create channel. It might already exist in this server.");
+                } else {
+                    joinServer(currentServerId); // Reload channels to show the new one
                 }
             }
         };
@@ -542,13 +575,15 @@
         channelsTab.onclick = () => {
             channelsTab.classList.add('active');
             usersTab.classList.remove('active');
-            // This now just shows the channel list in the sidebar, no longer a separate chat tab.
+            // Re-show the channel list in the sidebar if it was hidden
+            // by the users tab functionality (which is not yet implemented)
+            // For now, this has no visible effect but is good practice.
+            joinChannel(currentChannelId, document.querySelector('.channel-list-item.active')?.textContent.replace('# ', ''));
         };
 
         usersTab.onclick = () => {
             usersTab.classList.add('active');
             channelsTab.classList.remove('active');
-            // This will display a list of online users in the main chatbox area.
             loadOnlineUsersAsTabs();
         };
     }
@@ -589,14 +624,12 @@
     async function joinServer(serverId) {
         currentServerId = serverId;
 
-        // Update active server icon
         document.querySelectorAll('.server-icon').forEach(icon => icon.classList.remove('active'));
         const activeIcon = Array.from(serverSidebar.children).find(el => el.onclick && el.onclick.toString().includes(`joinServer('${serverId}')`));
         if (activeIcon) {
             activeIcon.classList.add('active');
         }
 
-        // Load channels for the selected server
         const { data: channels, error } = await supabase
             .from('channels')
             .select('*')
@@ -616,7 +649,6 @@
             channelList.appendChild(channelItem);
         });
 
-        // Join the first channel by default
         if (channels.length > 0) {
             joinChannel(channels[0].id, channels[0].name);
         }
@@ -627,7 +659,6 @@
         currentChatTarget = { type: 'channel', id: channelId };
         chatTitle.textContent = `# ${channelName}`;
 
-        // Update active channel item
         document.querySelectorAll('.channel-list-item').forEach(item => item.classList.remove('active'));
         const activeChannel = Array.from(channelList.children).find(el => el.onclick && el.onclick.toString().includes(`joinChannel('${channelId}')`));
         if (activeChannel) {
